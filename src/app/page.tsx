@@ -1,64 +1,36 @@
+import Image from "next/image";
+
 const apps = [
   {
     name: "Shutterfield",
     url: "https://shutterfield.com",
-    tagline: "Because Google shouldn't own your memories.",
-    description:
-      "Started as a place to store drone footage. Turned into a full photo library when Google Photos got greedy with storage. Now it handles 4TB+ of photos and videos with smart albums and search that actually works.",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
-        <rect x="2" y="2" width="20" height="20" rx="3" stroke="currentColor" strokeWidth="1.5" />
-        <circle cx="12" cy="11" r="4" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M5 19l3.5-4.5L11 17l3-4 5 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
+    tagline: "Your photos. Your cloud.",
+    description: "A photo and video library built to replace Google Photos - with real storage, smart albums, and no subscription creep.",
+    logo: "/images/shutterfield-logo.png",
     status: "live",
   },
   {
     name: "SixGuess",
     url: "https://sixguess.com",
     tagline: "Wordle with friends. For real this time.",
-    description:
-      "Born from a group text thread where three friends shared Wordle scores every day. We built a Discord bot, then a Tableau dashboard, then said screw it and built the whole app. 24 players, 3,900+ games logged, and growing.",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
-        <rect x="2" y="4" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-        <rect x="9.5" y="4" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-        <rect x="17" y="4" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-        <rect x="2" y="12" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-        <rect x="9.5" y="12" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-        <rect x="17" y="12" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-      </svg>
-    ),
+    description: "Daily word puzzles, live leaderboards, friend circles, and smack talk - all the parts Wordle left out.",
+    logo: "/images/sixguess-icon.svg",
     status: "live",
   },
   {
     name: "What a Great Day",
     url: "https://greatday.you",
-    tagline: "What happened today? Let's find out.",
-    description:
-      "A morning ritual. Open it up, see what's worth celebrating today - historical events, weird holidays, notable birthdays. It's a small thing that makes the day feel a little more interesting.",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
-        <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
-    status: "live",
+    tagline: "Every day has something worth celebrating.",
+    description: "A daily dose of historical events, weird holidays, and notable birthdays to make any morning feel a little more interesting.",
+    logo: null,
+    status: "coming-soon",
   },
   {
     name: "Acey Deucy",
     url: "#",
     tagline: "The card game your grandpa taught you.",
-    description:
-      "Simple rules, fast rounds, and just enough luck to keep it interesting. We've been playing this at family gatherings for years. Now we're putting it online so we can play when we're not all in the same room.",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
-        <rect x="3" y="2" width="12" height="17" rx="2" stroke="currentColor" strokeWidth="1.5" />
-        <rect x="9" y="5" width="12" height="17" rx="2" stroke="currentColor" strokeWidth="1.5" fill="#0a0a0a" />
-        <text x="13" y="14" fontSize="6" fill="currentColor" fontWeight="bold">A</text>
-      </svg>
-    ),
+    description: "Simple rules, fast rounds, and just enough luck to keep it interesting. Coming soon.",
+    logo: null,
     status: "coming-soon",
   },
 ];
@@ -89,37 +61,13 @@ export default function Home() {
       </header>
 
       {/* Hero */}
-      <section className="max-w-6xl mx-auto px-6 pt-16 pb-6">
+      <section className="max-w-6xl mx-auto px-6 pt-16 pb-12">
         <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-text-primary leading-tight">
           <span className="text-accent">We&apos;re Having Fun Here.</span>
         </h2>
-      </section>
-
-      {/* Story */}
-      <section className="max-w-6xl mx-auto px-6 pb-12">
-        <div className="max-w-3xl space-y-4 text-text-secondary text-base leading-relaxed">
-          <p>
-            I&apos;m Johnny Outlaw. I build things out of a studio in Greenville, TX - a back room
-            with too many monitors and just enough coffee to make bad ideas sound like great ones at
-            midnight. I&apos;ve been in data and software for 25 years. I know how to build things.
-            For a long time, I built things for other people.
-          </p>
-          <p>
-            Then one day a group text about Wordle scores got out of hand, and I thought: I could
-            build that. Not a polished, VC-funded, dark-pattern-riddled that. Just a simple, honest
-            version that does exactly what three friends actually want. That became SixGuess.
-            Getting fed up with Google Photos hoarding my drone footage became Shutterfield.
-            A habit of looking up weird historical footnotes every morning became What a Great Day.
-          </p>
-          <p>
-            Every app here started the same way - something was annoying, or a friend said
-            &quot;wouldn&apos;t it be cool if&quot;, and I couldn&apos;t let it go. Modern tools
-            - real-time databases, edge compute, AI - make it possible to build things that used
-            to take a team of ten. I&apos;m one guy in a studio. And that&apos;s kind of the point.
-            No bloat, no investors, no creeping subscription tiers. Just small, useful things built
-            with care. And yeah - we&apos;re having fun here.
-          </p>
-        </div>
+        <p className="mt-4 text-lg text-text-secondary max-w-2xl">
+          Using modern technology to take the pain out of doing the things we love.
+        </p>
       </section>
 
       {/* App Cards */}
@@ -139,8 +87,18 @@ export default function Home() {
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className={`text-text-secondary ${app.status === "live" ? "group-hover:text-accent" : ""} transition-colors`}>
-                    {app.icon}
+                  <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
+                    {app.logo ? (
+                      <Image
+                        src={app.logo}
+                        alt={`${app.name} logo`}
+                        width={40}
+                        height={40}
+                        className="object-contain w-10 h-10"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-border" />
+                    )}
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-text-primary">{app.name}</h3>
@@ -155,7 +113,7 @@ export default function Home() {
                   <svg
                     viewBox="0 0 20 20"
                     fill="currentColor"
-                    className="w-5 h-5 text-text-muted group-hover:text-accent transition-colors"
+                    className="w-5 h-5 text-text-muted group-hover:text-accent transition-colors flex-shrink-0"
                   >
                     <path
                       fillRule="evenodd"

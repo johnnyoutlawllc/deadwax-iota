@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="4" fill="#121213"/>
+  <!-- Row 1: gray, gray, green -->
+  <rect x="3" y="3" width="7.5" height="7.5" rx="1" fill="#3a3a3c"/>
+  <rect x="12.25" y="3" width="7.5" height="7.5" rx="1" fill="#3a3a3c"/>
+  <rect x="21.5" y="3" width="7.5" height="7.5" rx="1" fill="#538d4e"/>
+  <!-- Row 2: yellow, green, gray -->
+  <rect x="3" y="12.25" width="7.5" height="7.5" rx="1" fill="#b59f3b"/>
+  <rect x="12.25" y="12.25" width="7.5" height="7.5" rx="1" fill="#538d4e"/>
+  <rect x="21.5" y="12.25" width="7.5" height="7.5" rx="1" fill="#3a3a3c"/>
+  <!-- Row 3: green, green, green -->
+  <rect x="3" y="21.5" width="7.5" height="7.5" rx="1" fill="#538d4e"/>
+  <rect x="12.25" y="21.5" width="7.5" height="7.5" rx="1" fill="#538d4e"/>
+  <rect x="21.5" y="21.5" width="7.5" height="7.5" rx="1" fill="#538d4e"/>
+</svg>
