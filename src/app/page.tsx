@@ -91,8 +91,7 @@ export default function Home() {
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 pt-16 pb-6">
         <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-text-primary leading-tight">
-          Outlaw Apps.<br />
-          <span className="text-accent">We&apos;re having fun here!</span>
+          <span className="text-accent">We&apos;re Having Fun Here.</span>
         </h2>
       </section>
 
@@ -100,20 +99,25 @@ export default function Home() {
       <section className="max-w-6xl mx-auto px-6 pb-12">
         <div className="max-w-3xl space-y-4 text-text-secondary text-base leading-relaxed">
           <p>
-            I&apos;m Johnny Outlaw - a data developer with 25+ years of experience who got tired of
-            waiting for someone else to build the things I wanted. So I started building them myself
-            out of Church Street Studio in Greenville, TX.
+            I&apos;m Johnny Outlaw. I build things out of a studio in Greenville, TX - a back room
+            with too many monitors and just enough coffee to make bad ideas sound like great ones at
+            midnight. I&apos;ve been in data and software for 25 years. I know how to build things.
+            For a long time, I built things for other people.
           </p>
           <p>
-            It usually starts the same way: something annoys me, or a friend says &quot;wouldn&apos;t it be
-            cool if...&quot; and then I can&apos;t stop thinking about it. A group text about Wordle scores
-            turned into SixGuess. Getting fed up with Google Photos turned into Shutterfield. Wanting
-            to know why today felt special turned into What a Great Day.
+            Then one day a group text about Wordle scores got out of hand, and I thought: I could
+            build that. Not a polished, VC-funded, dark-pattern-riddled that. Just a simple, honest
+            version that does exactly what three friends actually want. That became SixGuess.
+            Getting fed up with Google Photos hoarding my drone footage became Shutterfield.
+            A habit of looking up weird historical footnotes every morning became What a Great Day.
           </p>
           <p>
-            The goal is always the same - take something fun or useful, strip out the friction, and
-            use data and technology to make it better. No investors, no bloat, no tracking your every
-            move. Just apps that do what they say and get out of the way.
+            Every app here started the same way - something was annoying, or a friend said
+            &quot;wouldn&apos;t it be cool if&quot;, and I couldn&apos;t let it go. Modern tools
+            - real-time databases, edge compute, AI - make it possible to build things that used
+            to take a team of ten. I&apos;m one guy in a studio. And that&apos;s kind of the point.
+            No bloat, no investors, no creeping subscription tiers. Just small, useful things built
+            with care. And yeah - we&apos;re having fun here.
           </p>
         </div>
       </section>
