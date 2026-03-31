@@ -2,34 +2,34 @@ import Image from "next/image";
 
 const apps = [
   {
-    name: "Shutterfield",
+    name: "ShutterField",
     url: "https://shutterfield.com",
-    tagline: "Your photos. Your cloud.",
-    description: "A photo and video library built to replace Google Photos - with real storage, smart albums, and no subscription creep.",
+    tagline: "Content management made easy.",
+    description: "A photo and video library management system built by people tired of scrolling and selecting.",
     logo: "/images/shutterfield-logo.png",
     status: "live",
   },
   {
     name: "SixGuess",
     url: "https://sixguess.com",
-    tagline: "Wordle with friends. For real this time.",
-    description: "Daily word puzzles, live leaderboards, friend circles, and smack talk - all the parts Wordle left out.",
+    tagline: "Daily word games with friends.",
+    description: "Go beyond the daily result text. Track your favorite game results between friend groups and more.",
     logo: "/images/sixguess-icon.svg",
     status: "live",
   },
   {
     name: "What a Great Day",
     url: "https://greatday.you",
-    tagline: "Every day has something worth celebrating.",
-    description: "A daily dose of historical events, weird holidays, and notable birthdays to make any morning feel a little more interesting.",
+    tagline: "",
+    description: "",
     logo: null,
     status: "coming-soon",
   },
   {
     name: "Acey Deucy",
     url: "#",
-    tagline: "The card game your grandpa taught you.",
-    description: "Simple rules, fast rounds, and just enough luck to keep it interesting. Coming soon.",
+    tagline: "",
+    description: "",
     logo: null,
     status: "coming-soon",
   },
@@ -135,10 +135,18 @@ export default function Home() {
       <footer className="border-t border-border">
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-text-muted">
-            &copy; {new Date().getFullYear()} Johnny Outlaw, LLC. Designed in Church Street Studio, Greenville, TX.
+            Designed at{" "}
+            <a href="https://churchst.studio" target="_blank" rel="noopener noreferrer" className="hover:text-accent transition-colors">
+              Church St Studio
+            </a>
+            {" "}in Greenville, TX
           </p>
-          <p className="text-xs text-text-muted">
-            outlawapps.online
+          <p className="text-sm text-text-muted">
+            A{" "}
+            <a href="https://johnnyoutlaw.llc" target="_blank" rel="noopener noreferrer" className="hover:text-accent transition-colors">
+              Johnny Outlaw
+            </a>
+            {" "}venture
           </p>
         </div>
       </footer>
