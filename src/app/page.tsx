@@ -2,9 +2,9 @@ const apps = [
   {
     name: "Shutterfield",
     url: "https://shutterfield.com",
-    tagline: "Your photos. Your cloud. No compromises.",
+    tagline: "Because Google shouldn't own your memories.",
     description:
-      "A powerful photo management platform built to replace Google Photos. Organize, browse, and store your entire library with drone support, smart albums, and Backblaze B2 storage.",
+      "Started as a place to store drone footage. Turned into a full photo library when Google Photos got greedy with storage. Now it handles 4TB+ of photos and videos with smart albums and search that actually works.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
         <rect x="2" y="2" width="20" height="20" rx="3" stroke="currentColor" strokeWidth="1.5" />
@@ -19,7 +19,7 @@ const apps = [
     url: "https://sixguess.com",
     tagline: "Wordle with friends. For real this time.",
     description:
-      "Play daily word puzzles and compete with your circles. Track stats, chat smack, and see how you stack up against your crew - all in one place.",
+      "Born from a group text thread where three friends shared Wordle scores every day. We built a Discord bot, then a Tableau dashboard, then said screw it and built the whole app. 24 players, 3,900+ games logged, and growing.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
         <rect x="2" y="4" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
@@ -35,9 +35,9 @@ const apps = [
   {
     name: "What a Great Day",
     url: "https://greatday.you",
-    tagline: "Every day has something worth celebrating.",
+    tagline: "What happened today? Let's find out.",
     description:
-      "Discover what makes today special. Historical events, fun holidays, notable birthdays - a daily dose of positivity and interesting facts to start your morning right.",
+      "A morning ritual. Open it up, see what's worth celebrating today - historical events, weird holidays, notable birthdays. It's a small thing that makes the day feel a little more interesting.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
         <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="1.5" />
@@ -49,9 +49,9 @@ const apps = [
   {
     name: "Acey Deucy",
     url: "#",
-    tagline: "The classic card game, coming soon.",
+    tagline: "The card game your grandpa taught you.",
     description:
-      "A digital take on the beloved card game. Play against friends or AI opponents. Currently in development - stay tuned.",
+      "Simple rules, fast rounds, and just enough luck to keep it interesting. We've been playing this at family gatherings for years. Now we're putting it online so we can play when we're not all in the same room.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
         <rect x="3" y="2" width="12" height="17" rx="2" stroke="currentColor" strokeWidth="1.5" />
@@ -89,15 +89,33 @@ export default function Home() {
       </header>
 
       {/* Hero */}
-      <section className="max-w-6xl mx-auto px-6 pt-16 pb-12">
+      <section className="max-w-6xl mx-auto px-6 pt-16 pb-6">
         <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-text-primary leading-tight">
-          Apps built for <span className="text-accent">real people</span>,<br />
-          by a real person.
+          Outlaw Apps.<br />
+          <span className="text-accent">We&apos;re having fun here!</span>
         </h2>
-        <p className="mt-4 text-lg text-text-secondary max-w-2xl">
-          A growing collection of tools and games designed in Texas.
-          No venture capital. No bloat. Just useful stuff that works.
-        </p>
+      </section>
+
+      {/* Story */}
+      <section className="max-w-6xl mx-auto px-6 pb-12">
+        <div className="max-w-3xl space-y-4 text-text-secondary text-base leading-relaxed">
+          <p>
+            I&apos;m Johnny Outlaw - a data developer with 25+ years of experience who got tired of
+            waiting for someone else to build the things I wanted. So I started building them myself
+            out of Church Street Studio in Greenville, TX.
+          </p>
+          <p>
+            It usually starts the same way: something annoys me, or a friend says &quot;wouldn&apos;t it be
+            cool if...&quot; and then I can&apos;t stop thinking about it. A group text about Wordle scores
+            turned into SixGuess. Getting fed up with Google Photos turned into Shutterfield. Wanting
+            to know why today felt special turned into What a Great Day.
+          </p>
+          <p>
+            The goal is always the same - take something fun or useful, strip out the friction, and
+            use data and technology to make it better. No investors, no bloat, no tracking your every
+            move. Just apps that do what they say and get out of the way.
+          </p>
+        </div>
       </section>
 
       {/* App Cards */}
