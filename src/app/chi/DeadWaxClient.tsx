@@ -7,6 +7,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import TableViewer from './TableViewer'
 import DatabaseMasterOverview, { type RawColumnProfile } from './DatabaseMasterOverview'
 import CatalogOverview, { type CatalogData } from './CatalogOverview'
@@ -590,7 +591,13 @@ export default function DeadWaxClient({
       {/* Header */}
       <header className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-background border-b border-border backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center font-bold text-sm text-white">DW</div>
+          <Image
+            src="/images/deadwax-logo.avif"
+            alt="Dead Wax Records"
+            width={36}
+            height={36}
+            className="rounded-lg object-contain"
+          />
           <div>
             <h1 className="font-bold text-text-primary leading-none">Dead Wax Records</h1>
             <p className="text-xs text-text-muted leading-none mt-0.5">Management Dashboard</p>

@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import * as XLSX from 'xlsx'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -404,6 +405,47 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
     return String(val)
   }
 
+  // ── Export helpers ────────────────────────────────────────────────────────
+
+  function exportToExcel() {
+    const header = columns.map(c => c.col_name)
+    const data = rows.map(row => columns.map(c => {
+      const val = row[c.col_name]
+      if (val === null || val === undefined) return ''
+      if (typeof val === 'object') return JSON.stringify(val)
+      return val
+    }))
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data])
+    // Auto-fit column widths based on header + sample content
+    ws['!cols'] = header.map((h, i) => {
+      const maxLen = Math.max(h.length, ...data.slice(0, 50).map(r => String(r[i] ?? '').length))
+      return { wch: Math.min(maxLen + 2, 40) }
+    })
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, activeTable.slice(0, 31))
+    XLSX.writeFile(wb, `${activeSchema}.${activeTable}.xlsx`)
+  }
+
+  function exportToCSV() {
+    const header = columns.map(c => c.col_name).join(',')
+    const csvRows = rows.map(row =>
+      columns.map(c => {
+        const val = row[c.col_name]
+        if (val === null || val === undefined) return ''
+        const str = typeof val === 'object' ? JSON.stringify(val) : String(val)
+        return str.includes(',') || str.includes('"') || str.includes('\n')
+          ? `"${str.replace(/"/g, '""')}"` : str
+      }).join(',')
+    )
+    const blob = new Blob([[header, ...csvRows].join('\n')], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeSchema}.${activeTable}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0a0a0a' }}>
 
@@ -428,6 +470,26 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
             <span className="text-xs" style={{ color: '#666' }}>
               sorted by <span style={{ color: '#ff6b35' }}>{sortCol}</span> {sortDir === 'asc' ? '↑' : '↓'}
             </span>
+          )}
+          {!loading && rows.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={exportToExcel}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-90 active:scale-95"
+                style={{ background: '#1a6b2a', color: '#4ade80', border: '1px solid #2a3a2a' }}
+                title="Export to Excel (.xlsx)"
+              >
+                <span>⬇</span> Excel
+              </button>
+              <button
+                onClick={exportToCSV}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-90 active:scale-95"
+                style={{ background: '#1a1a2a', color: '#818cf8', border: '1px solid #2a2a3a' }}
+                title="Export to CSV"
+              >
+                <span>⬇</span> CSV
+              </button>
+            </div>
           )}
           <button onClick={onClose}
             className="text-lg font-bold leading-none hover:text-white transition-colors"
