@@ -3,13 +3,16 @@
 // Dead Wax Records — Login page
 // Johnny Outlaw, LLC — Designed in Rockwall, TX
 //
-// Google OAuth + magic link. Only johnnyoutlawllc@gmail.com is permitted.
+// Standard Outlaw auth pattern — Google OAuth + magic link.
+// Only johnnyoutlawllc@gmail.com is permitted.
+// See: Dead Wax Records/GOOGLE-AUTH.md
 
 import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSearchParams } from 'next/navigation'
 
 const ALLOWED_EMAIL = 'johnnyoutlawllc@gmail.com'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL!
 
 function GoogleIcon() {
   return (
@@ -42,7 +45,7 @@ function LoginForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/chi`,
+        redirectTo: `${SITE_URL}/api/auth/callback?next=/chi`,
         queryParams: {
           login_hint: ALLOWED_EMAIL,
         },
@@ -63,7 +66,7 @@ function LoginForm() {
     const { error } = await supabase.auth.signInWithOtp({
       email: ALLOWED_EMAIL,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/chi`,
+        emailRedirectTo: `${SITE_URL}/api/auth/callback?next=/chi`,
       },
     })
     if (error) {

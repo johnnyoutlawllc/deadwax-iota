@@ -340,8 +340,8 @@ export default function DeadWaxClient({
   const latestPayment = recentPayments[0]
 
   async function handleSignOut() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    // Standard Outlaw pattern: server-side sign-out via POST route
+    await fetch('/api/auth/signout', { method: 'POST' })
     router.push('/chi/login')
     router.refresh()
   }
