@@ -1,26 +1,82 @@
-// Channel Health Index
-// Johnny Outlaw, LLC — Designed in Rockwall, TX
+/**
+ * Dead Wax Records — Channel Health Index Dashboard
+ * Johnny Outlaw, LLC — Designed in Rockwall, TX
+ *
+ * Route: /chi
+ * Access: johnnyoutlawllc@gmail.com only (enforced via middleware.ts)
+ */
 
-export default function ChannelHealthIndex() {
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import DeadWaxClient from './DeadWaxClient'
+
+export const metadata = {
+  title: 'Dead Wax Records — Dashboard',
+  description: 'Inventory & social media management for Dead Wax Records',
+}
+
+export default async function ChiPage() {
+  const supabase = await createClient()
+
+  // Double-check auth server-side (middleware.ts is the primary guard)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/chi/login')
+
+  // Fetch all dashboard data in parallel
+  const [
+    { data: accountHistory },
+    { data: recentInsights },
+    { data: recentMedia },
+    { data: catalogItems, count: catalogCount },
+    { data: recentPayments },
+  ] = await Promise.all([
+    supabase
+      .schema('outlaw_data')
+      .from('instagram_account_history')
+      .select('*')
+      .order('updated', { ascending: false })
+      .limit(2),
+
+    supabase
+      .schema('outlaw_data')
+      .from('instagram_insights')
+      .select('*')
+      .eq('metric', 'reach')
+      .order('date', { ascending: false })
+      .limit(7),
+
+    supabase
+      .schema('outlaw_data')
+      .from('instagram_media')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(6),
+
+    supabase
+      .schema('outlaw_data')
+      .from('square_catalog_items')
+      .select('catalog_object_id, name, description, is_archived, updated_at', { count: 'exact' })
+      .eq('is_archived', false)
+      .order('updated_at', { ascending: false })
+      .limit(100),
+
+    supabase
+      .schema('outlaw_data')
+      .from('square_payments')
+      .select('payment_id, amount_money, total_money, source_type, created_at, status, card_brand, last_4')
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ])
+
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
-      <div className="max-w-xl w-full text-center">
-        <div className="w-14 h-14 rounded-xl bg-accent flex items-center justify-center mx-auto mb-6">
-          <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-white">
-            <path d="M3 17l4-8 4 4 4-6 4 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <h1 className="text-4xl font-extrabold tracking-tight text-text-primary mb-3">
-          Channel Health Index
-        </h1>
-        <p className="text-text-muted text-lg mb-8">Coming soon.</p>
-        <a
-          href="/"
-          className="text-sm text-accent hover:underline transition-colors"
-        >
-          ← Back to Outlaw Apps
-        </a>
-      </div>
-    </div>
-  );
+    <DeadWaxClient
+      accountHistory={accountHistory ?? []}
+      recentInsights={recentInsights ?? []}
+      recentMedia={recentMedia ?? []}
+      catalogItems={catalogItems ?? []}
+      catalogCount={catalogCount ?? 0}
+      recentPayments={recentPayments ?? []}
+      userEmail={user.email ?? ''}
+    />
+  )
 }
