@@ -33,6 +33,14 @@ const apps = [
     logo: null,
     status: "coming-soon",
   },
+  {
+    name: "Channel Health Index",
+    url: "/chi",
+    tagline: "",
+    description: "",
+    logo: null,
+    status: "live",
+  },
 ];
 
 export default function Home() {
@@ -77,8 +85,8 @@ export default function Home() {
             <a
               key={app.name}
               href={app.status === "live" ? app.url : undefined}
-              target={app.status === "live" ? "_blank" : undefined}
-              rel={app.status === "live" ? "noopener noreferrer" : undefined}
+              target={app.status === "live" && !app.url.startsWith("/") ? "_blank" : undefined}
+              rel={app.status === "live" && !app.url.startsWith("/") ? "noopener noreferrer" : undefined}
               className={`group block rounded-xl border border-border bg-surface p-6 transition-all duration-200 ${
                 app.status === "live"
                   ? "hover:border-accent/40 hover:bg-surface-hover cursor-pointer"
