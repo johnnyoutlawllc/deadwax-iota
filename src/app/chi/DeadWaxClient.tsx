@@ -8,6 +8,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import TableViewer from './TableViewer'
+import DatabaseMasterOverview, { type RawColumnProfile } from './DatabaseMasterOverview'
+import CatalogOverview, { type CatalogData } from './CatalogOverview'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +91,8 @@ interface Props {
   instagramDemographics: DemographicRow[]
   facebookPosts: FacebookPost[]
   dbStats: DbStatRow[]
+  columnProfiles: RawColumnProfile[]
+  catalogOverview: CatalogData | null
   userEmail: string
 }
 
@@ -563,12 +567,12 @@ function DatabasePanel({ stats, onViewTable }: {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type Tab = 'square' | 'instagram' | 'facebook' | 'tiktok' | 'database'
+type Tab = 'square' | 'instagram' | 'facebook' | 'tiktok' | 'catalog' | 'database' | 'db-overview'
 
 export default function DeadWaxClient({
   squareSummary, squareTopItems, recentPayments,
   instagramMedia, instagramAccount, instagramDemographics,
-  facebookPosts, dbStats, userEmail,
+  facebookPosts, dbStats, columnProfiles, catalogOverview, userEmail,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('square')
   const [viewerTable, setViewerTable] = useState<{ schema: string; table: string } | null>(null)
@@ -603,15 +607,22 @@ export default function DeadWaxClient({
         {/* Tabs */}
         <section>
           <div className="flex gap-2 mb-6 flex-wrap">
-            <TabButton active={activeTab === 'square'}   onClick={() => setActiveTab('square')}>🛒 Square</TabButton>
-            <TabButton active={activeTab === 'instagram'} onClick={() => setActiveTab('instagram')}>📸 Instagram</TabButton>
-            <TabButton active={activeTab === 'facebook'} onClick={() => setActiveTab('facebook')}>👥 Facebook</TabButton>
-            <TabButton active={activeTab === 'tiktok'}   onClick={() => setActiveTab('tiktok')}>🎵 TikTok</TabButton>
-            <TabButton active={activeTab === 'database'} onClick={() => setActiveTab('database')}>🗄️ Database</TabButton>
+            <TabButton active={activeTab === 'square'}      onClick={() => setActiveTab('square')}>🛒 Square</TabButton>
+            <TabButton active={activeTab === 'catalog'}     onClick={() => setActiveTab('catalog')}>📦 Catalog</TabButton>
+            <TabButton active={activeTab === 'instagram'}   onClick={() => setActiveTab('instagram')}>📸 Instagram</TabButton>
+            <TabButton active={activeTab === 'facebook'}    onClick={() => setActiveTab('facebook')}>👥 Facebook</TabButton>
+            <TabButton active={activeTab === 'tiktok'}      onClick={() => setActiveTab('tiktok')}>🎵 TikTok</TabButton>
+            <TabButton active={activeTab === 'database'}    onClick={() => setActiveTab('database')}>🗄️ Database</TabButton>
+            <TabButton active={activeTab === 'db-overview'} onClick={() => setActiveTab('db-overview')}>🗺️ DB Overview</TabButton>
           </div>
 
           {activeTab === 'square' && (
             <SquarePanel summary={squareSummary} topItems={squareTopItems} payments={recentPayments} />
+          )}
+          {activeTab === 'catalog' && (
+            catalogOverview
+              ? <CatalogOverview data={catalogOverview} />
+              : <p className="text-sm text-text-muted">Catalog data unavailable.</p>
           )}
           {activeTab === 'instagram' && (
             <InstagramPanel account={instagramAccount} media={instagramMedia} demographics={instagramDemographics} />
@@ -625,6 +636,13 @@ export default function DeadWaxClient({
           {activeTab === 'database' && (
             <DatabasePanel
               stats={dbStats}
+              onViewTable={(schema, table) => setViewerTable({ schema, table })}
+            />
+          )}
+          {activeTab === 'db-overview' && (
+            <DatabaseMasterOverview
+              profiles={columnProfiles}
+              dbStats={dbStats}
               onViewTable={(schema, table) => setViewerTable({ schema, table })}
             />
           )}

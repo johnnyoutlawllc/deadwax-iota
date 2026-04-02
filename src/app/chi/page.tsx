@@ -30,6 +30,8 @@ export default async function ChiPage() {
     { data: instagramDemographics },
     { data: facebookPosts },
     { data: dbStats },
+    { data: columnProfiles },
+    { data: catalogOverview },
   ] = await Promise.all([
     supabase.rpc('get_square_summary'),
 
@@ -59,6 +61,8 @@ export default async function ChiPage() {
     supabase.rpc('get_facebook_posts_with_metrics'),
 
     supabase.rpc('get_db_stats'),
+    supabase.rpc('get_all_column_profiles'),
+    supabase.rpc('get_catalog_overview'),
   ])
 
   return (
@@ -71,6 +75,8 @@ export default async function ChiPage() {
       instagramDemographics={instagramDemographics ?? []}
       facebookPosts={facebookPosts ?? []}
       dbStats={dbStats ?? []}
+      columnProfiles={columnProfiles ?? []}
+      catalogOverview={catalogOverview ?? null}
       userEmail={user.email ?? ''}
     />
   )
