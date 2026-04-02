@@ -12,7 +12,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useSearchParams } from 'next/navigation'
 
 const ALLOWED_EMAIL = 'johnnyoutlawllc@gmail.com'
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL!
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.outlawapps.online'
 
 function GoogleIcon() {
   return (
