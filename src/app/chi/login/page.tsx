@@ -3,8 +3,7 @@
 // Dead Wax Records — Login page
 // Johnny Outlaw, LLC — Designed in Rockwall, TX
 //
-// Standard Outlaw auth pattern — Google OAuth + magic link.
-// Only johnnyoutlawllc@gmail.com is permitted.
+// Google OAuth only. Only johnnyoutlawllc@gmail.com is permitted.
 // See: Dead Wax Records/GOOGLE-AUTH.md
 
 import { useState, useEffect, Suspense } from 'react'
@@ -26,9 +25,7 @@ function GoogleIcon() {
 }
 
 function LoginForm() {
-  const [googleLoading, setGoogleLoading] = useState(false)
-  const [magicLoading, setMagicLoading] = useState(false)
-  const [sent, setSent] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const searchParams = useSearchParams()
 
@@ -39,42 +36,20 @@ function LoginForm() {
   }, [searchParams])
 
   async function handleGoogle() {
-    setGoogleLoading(true)
+    setLoading(true)
     setError(null)
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${SITE_URL}/api/auth/callback?next=/chi`,
-        queryParams: {
-          login_hint: ALLOWED_EMAIL,
-        },
+        queryParams: { login_hint: ALLOWED_EMAIL },
       },
     })
     if (error) {
       setError(error.message)
-      setGoogleLoading(false)
+      setLoading(false)
     }
-    // On success, browser redirects — no need to reset loading
-  }
-
-  async function handleMagicLink(e: React.FormEvent) {
-    e.preventDefault()
-    setMagicLoading(true)
-    setError(null)
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithOtp({
-      email: ALLOWED_EMAIL,
-      options: {
-        emailRedirectTo: `${SITE_URL}/api/auth/callback?next=/chi`,
-      },
-    })
-    if (error) {
-      setError(error.message)
-    } else {
-      setSent(true)
-    }
-    setMagicLoading(false)
   }
 
   return (
@@ -92,70 +67,23 @@ function LoginForm() {
           <p className="text-text-muted text-sm mt-1">Management Dashboard</p>
         </div>
 
-        {sent ? (
-          /* ── Sent state ── */
-          <div className="rounded-xl p-6 text-center bg-surface border border-border">
-            <div className="text-3xl mb-3">📬</div>
-            <p className="text-text-primary font-semibold mb-1">Check your email</p>
-            <p className="text-text-muted text-sm">
-              A magic link was sent to{' '}
-              <span className="text-accent">{ALLOWED_EMAIL}</span>. Click the link to sign in.
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="rounded-xl p-6 flex flex-col gap-4 bg-surface border border-border">
-
-              {error && (
-                <div className="rounded-lg px-4 py-3 text-sm" style={{ background: '#2e1a1a', border: '1px solid #5a2a2a', color: '#f87171' }}>
-                  {error}
-                </div>
-              )}
-
-              {/* Google button */}
-              <button
-                type="button"
-                onClick={handleGoogle}
-                disabled={googleLoading || magicLoading}
-                className="w-full rounded-lg py-2.5 font-semibold text-sm flex items-center justify-center gap-2.5 transition-colors disabled:opacity-50 bg-white text-gray-800 hover:bg-gray-100"
-              >
-                <GoogleIcon />
-                {googleLoading ? 'Redirecting…' : 'Sign in with Google'}
-              </button>
-
-              {/* Divider */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-border" />
-                <span className="text-xs text-text-muted">or</span>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-
-              {/* Magic link */}
-              <form onSubmit={handleMagicLink} className="flex flex-col gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-widest">
-                    Email
-                  </label>
-                  <div className="w-full rounded-lg px-4 py-2.5 text-sm text-text-secondary bg-background border border-border">
-                    {ALLOWED_EMAIL}
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  disabled={magicLoading || googleLoading}
-                  className="w-full rounded-lg py-2.5 font-semibold text-sm text-white transition-opacity disabled:opacity-50"
-                  style={{ background: '#ff6b35' }}
-                >
-                  {magicLoading ? 'Sending…' : 'Send Magic Link'}
-                </button>
-              </form>
+        <div className="rounded-xl p-6 flex flex-col gap-4 bg-surface border border-border">
+          {error && (
+            <div className="rounded-lg px-4 py-3 text-sm" style={{ background: '#2e1a1a', border: '1px solid #5a2a2a', color: '#f87171' }}>
+              {error}
             </div>
+          )}
 
-            <p className="text-center text-xs text-text-muted">
-              Access is restricted to authorized users only.
-            </p>
-          </div>
-        )}
+          <button
+            type="button"
+            onClick={handleGoogle}
+            disabled={loading}
+            className="w-full rounded-lg py-3 font-semibold text-sm flex items-center justify-center gap-2.5 transition-colors disabled:opacity-50 bg-white text-gray-800 hover:bg-gray-100"
+          >
+            <GoogleIcon />
+            {loading ? 'Redirecting…' : 'Sign in with Google'}
+          </button>
+        </div>
 
         <div className="mt-8 text-center space-y-2">
           <a href="/" className="text-xs text-text-muted hover:text-accent transition-colors">
