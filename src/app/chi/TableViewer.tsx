@@ -38,9 +38,17 @@ interface ColumnProfile {
   maxDate?: string
 }
 
+interface TableEntry {
+  schema_name: string
+  table_name: string
+  row_count: number
+  size_pretty: string
+}
+
 interface Props {
   schema: string
   table: string
+  allTables: TableEntry[]
   onClose: () => void
 }
 
@@ -322,7 +330,17 @@ function DetailPanel({ profile }: { profile: ColumnProfile }) {
 
 // ─── Main TableViewer ─────────────────────────────────────────────────────────
 
-export default function TableViewer({ schema, table, onClose }: Props) {
+const SIDEBAR_GROUPS = [
+  { label: 'Square', icon: '🛒', tables: ['square_catalog_items','square_orders','square_order_line_items','square_payments','square_customers','square_invoices','square_merchants','square_locations'] },
+  { label: 'Instagram', icon: '📸', tables: ['instagram_media','instagram_media_insights','instagram_demographics','instagram_account_history','instagram_insights'] },
+  { label: 'Facebook', icon: '👥', tables: ['facebook_posts','facebook_post_metrics'] },
+  { label: 'TikTok', icon: '🎵', tables: ['tiktok_videos','tiktok_video_snapshots','tiktok_accounts'] },
+  { label: 'Internal', icon: '🏢', tables: ['client_accounts','clients'] },
+]
+
+export default function TableViewer({ schema, table, allTables, onClose }: Props) {
+  const [activeSchema, setActiveSchema] = useState(schema)
+  const [activeTable, setActiveTable]   = useState(table)
   const [rows, setRows]         = useState<Record<string, unknown>[]>([])
   const [columns, setColumns]   = useState<ColumnMeta[]>([])
   const [loading, setLoading]   = useState(true)
@@ -331,32 +349,49 @@ export default function TableViewer({ schema, table, onClose }: Props) {
   const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('asc')
   const [selectedCol, setSelectedCol] = useState<string | null>(null)
 
-  const fetchData = useCallback(async (col: string | null, dir: 'asc' | 'desc') => {
+  // Build a lookup: table_name → { schema, rows, size }
+  const tableIndex = useMemo(() =>
+    Object.fromEntries(allTables.map(t => [t.table_name, t])),
+    [allTables]
+  )
+
+  function switchTable(newSchema: string, newTable: string) {
+    if (newTable === activeTable) return
+    setActiveSchema(newSchema)
+    setActiveTable(newTable)
+    setSortCol(null)
+    setSortDir('asc')
+    setSelectedCol(null)
+    setRows([])
+    setColumns([])
+  }
+
+  const fetchData = useCallback(async (col: string | null, dir: 'asc' | 'desc', sc = activeSchema, tbl = activeTable) => {
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams({ schema, table, dir })
+      const params = new URLSearchParams({ schema: sc, table: tbl, dir })
       if (col) params.set('sort', col)
       const res = await fetch(`/api/chi/table-preview?${params}`)
       if (!res.ok) throw new Error((await res.json()).error)
       const json = await res.json()
       setRows(json.rows ?? [])
       setColumns(json.columns ?? [])
-      if (!selectedCol && json.columns?.length > 0) setSelectedCol(json.columns[0].col_name)
+      setSelectedCol(json.columns?.length > 0 ? json.columns[0].col_name : null)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [schema, table, selectedCol])
+  }, [activeSchema, activeTable])
 
-  useEffect(() => { fetchData(null, 'asc') }, [schema, table])
+  useEffect(() => { fetchData(null, 'asc', activeSchema, activeTable) }, [activeSchema, activeTable])
 
   function handleSort(col: string) {
     const newDir = sortCol === col && sortDir === 'asc' ? 'desc' : 'asc'
     setSortCol(col)
     setSortDir(newDir)
-    fetchData(col, newDir)
+    fetchData(col, newDir, activeSchema, activeTable)
   }
 
   const profiles = useMemo(() => buildProfiles(rows, columns), [rows, columns])
@@ -373,15 +408,15 @@ export default function TableViewer({ schema, table, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0a0a0a' }}>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b shrink-0"
+      <div className="flex items-center justify-between px-4 py-3 border-b shrink-0"
         style={{ borderColor: '#1e1e1e', background: '#0d0d0d' }}>
         <div className="flex items-center gap-3">
           <button onClick={onClose} className="text-sm hover:text-white transition-colors" style={{ color: '#888' }}>
             ← Back
           </button>
           <span style={{ color: '#333' }}>|</span>
-          <span className="font-mono text-sm" style={{ color: '#888' }}>{schema}.</span>
-          <span className="font-mono text-sm font-bold text-white">{table}</span>
+          <span className="font-mono text-sm" style={{ color: '#666' }}>{activeSchema}.</span>
+          <span className="font-mono text-sm font-bold text-white">{activeTable}</span>
           {!loading && (
             <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#1a1a1a', color: '#666' }}>
               {rows.length} rows · {columns.length} cols
@@ -391,7 +426,7 @@ export default function TableViewer({ schema, table, onClose }: Props) {
         <div className="flex items-center gap-3">
           {sortCol && (
             <span className="text-xs" style={{ color: '#666' }}>
-              Sorted by <span style={{ color: '#ff6b35' }}>{sortCol}</span> {sortDir === 'asc' ? '↑' : '↓'}
+              sorted by <span style={{ color: '#ff6b35' }}>{sortCol}</span> {sortDir === 'asc' ? '↑' : '↓'}
             </span>
           )}
           <button onClick={onClose}
@@ -402,113 +437,164 @@ export default function TableViewer({ schema, table, onClose }: Props) {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <span className="text-sm" style={{ color: '#666' }}>Loading {table}…</span>
-        </div>
-      ) : error ? (
-        <div className="flex-1 flex items-center justify-center">
-          <span className="text-sm" style={{ color: '#f87171' }}>{error}</span>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Body: sidebar + content */}
+      <div className="flex-1 flex overflow-hidden">
 
-          {/* Column profile strip */}
-          <div className="shrink-0 border-b" style={{ borderColor: '#1e1e1e', background: '#0d0d0d' }}>
-            <div className="flex gap-2 px-4 py-3 overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
-              {profiles.map(p => (
-                <ProfileCard
-                  key={p.name}
-                  profile={p}
-                  selected={selectedCol === p.name}
-                  onClick={() => setSelectedCol(p.name)}
-                />
-              ))}
-            </div>
+        {/* ── Left Sidebar ─────────────────────────────────────────── */}
+        <div className="w-52 shrink-0 flex flex-col border-r overflow-y-auto"
+          style={{ borderColor: '#1e1e1e', background: '#0d0d0d', scrollbarWidth: 'thin' }}>
+          <div className="px-3 py-2 border-b" style={{ borderColor: '#1e1e1e' }}>
+            <span style={{ fontSize: 9, color: '#444', textTransform: 'uppercase', letterSpacing: 2 }}>
+              Tables
+            </span>
           </div>
-
-          {/* Detail + Table row */}
-          <div className="flex-1 flex overflow-hidden">
-
-            {/* Detail panel */}
-            {activeProfile && (
-              <div className="w-72 shrink-0 overflow-y-auto border-r p-3"
-                style={{ borderColor: '#1e1e1e', background: '#0d0d0d', scrollbarWidth: 'thin' }}>
-                <DetailPanel profile={activeProfile} />
+          {SIDEBAR_GROUPS.map(group => (
+            <div key={group.label}>
+              <div className="px-3 pt-3 pb-1 flex items-center gap-1.5">
+                <span style={{ fontSize: 11 }}>{group.icon}</span>
+                <span style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>
+                  {group.label}
+                </span>
               </div>
-            )}
-
-            {/* Data table */}
-            <div className="flex-1 overflow-auto" style={{ scrollbarWidth: 'thin' }}>
-              <table className="text-xs w-full border-collapse" style={{ minWidth: 'max-content' }}>
-                <thead className="sticky top-0 z-10" style={{ background: '#111' }}>
-                  <tr>
-                    <th className="px-3 py-2 text-right font-mono border-b border-r"
-                      style={{ color: '#444', borderColor: '#1e1e1e', width: 48 }}>#</th>
-                    {columns.map(col => {
-                      const tc = typeColor(col.data_type)
-                      const isSorted = sortCol === col.col_name
-                      const isSelected = selectedCol === col.col_name
-                      return (
-                        <th key={col.col_name}
-                          onClick={() => handleSort(col.col_name)}
-                          className="px-3 py-2 text-left font-mono border-b border-r cursor-pointer select-none whitespace-nowrap"
-                          style={{
-                            borderColor: '#1e1e1e',
-                            background: isSelected ? '#1a1a1a' : isSorted ? '#151515' : '#111',
-                            color: isSorted ? '#ff6b35' : '#999',
-                          }}>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs px-1 rounded font-bold"
-                              style={{ background: tc.bg, color: tc.color, fontSize: 8 }}>
-                              {typeLabel(col.data_type)}
-                            </span>
-                            {col.col_name}
-                            {isSorted && <span>{sortDir === 'asc' ? '↑' : '↓'}</span>}
-                          </div>
-                        </th>
-                      )
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, ri) => (
-                    <tr key={ri}
-                      className="hover:bg-white/5 transition-colors"
-                      style={{ background: ri % 2 === 0 ? '#0a0a0a' : '#0d0d0d' }}>
-                      <td className="px-3 py-1.5 text-right border-r font-mono select-none"
-                        style={{ color: '#333', borderColor: '#1a1a1a' }}>
-                        {ri + 1}
-                      </td>
-                      {columns.map(col => {
-                        const val = row[col.col_name]
-                        const isNull = val === null || val === undefined
-                        const isSelected = selectedCol === col.col_name
-                        return (
-                          <td key={col.col_name}
-                            onClick={() => setSelectedCol(col.col_name)}
-                            className="px-3 py-1.5 border-r cursor-pointer whitespace-nowrap"
-                            style={{
-                              borderColor: '#1a1a1a',
-                              background: isSelected ? 'rgba(255,107,53,0.04)' : undefined,
-                              color: isNull ? '#333' : '#ccc',
-                              fontStyle: isNull ? 'italic' : undefined,
-                              maxWidth: 300,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}>
-                            {isNull ? 'null' : fmtCell(val)}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {group.tables.map(tbl => {
+                const meta = tableIndex[tbl]
+                const isActive = tbl === activeTable
+                const rowCount = meta ? Number(meta.row_count) : 0
+                const schema = meta?.schema_name ?? 'outlaw_data'
+                return (
+                  <button
+                    key={tbl}
+                    onClick={() => switchTable(schema, tbl)}
+                    className="w-full text-left px-3 py-1.5 flex items-center justify-between gap-2 transition-colors"
+                    style={{
+                      background: isActive ? 'rgba(255,107,53,0.12)' : 'transparent',
+                      borderLeft: isActive ? '2px solid #ff6b35' : '2px solid transparent',
+                    }}
+                  >
+                    <span className="font-mono truncate" style={{
+                      fontSize: 11,
+                      color: isActive ? '#ff6b35' : rowCount > 0 ? '#aaa' : '#444',
+                    }}>
+                      {tbl}
+                    </span>
+                    <span style={{ fontSize: 10, color: '#444', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      {rowCount > 0 ? rowCount.toLocaleString() : '—'}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
-          </div>
+          ))}
         </div>
-      )}
+
+        {/* ── Main content ─────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <span className="text-sm" style={{ color: '#666' }}>Loading {activeTable}…</span>
+            </div>
+          ) : error ? (
+            <div className="flex-1 flex items-center justify-center">
+              <span className="text-sm" style={{ color: '#f87171' }}>{error}</span>
+            </div>
+          ) : (
+            <>
+              {/* Column profile strip */}
+              <div className="shrink-0 border-b" style={{ borderColor: '#1e1e1e', background: '#0d0d0d' }}>
+                <div className="flex gap-2 px-4 py-3 overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
+                  {profiles.map(p => (
+                    <ProfileCard
+                      key={p.name}
+                      profile={p}
+                      selected={selectedCol === p.name}
+                      onClick={() => setSelectedCol(p.name)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Detail panel + data table */}
+              <div className="flex-1 flex overflow-hidden">
+
+                {activeProfile && (
+                  <div className="w-72 shrink-0 overflow-y-auto border-r p-3"
+                    style={{ borderColor: '#1e1e1e', background: '#0d0d0d', scrollbarWidth: 'thin' }}>
+                    <DetailPanel profile={activeProfile} />
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-auto" style={{ scrollbarWidth: 'thin' }}>
+                  <table className="text-xs w-full border-collapse" style={{ minWidth: 'max-content' }}>
+                    <thead className="sticky top-0 z-10" style={{ background: '#111' }}>
+                      <tr>
+                        <th className="px-3 py-2 text-right font-mono border-b border-r"
+                          style={{ color: '#444', borderColor: '#1e1e1e', width: 48 }}>#</th>
+                        {columns.map(col => {
+                          const tc = typeColor(col.data_type)
+                          const isSorted = sortCol === col.col_name
+                          const isSelected = selectedCol === col.col_name
+                          return (
+                            <th key={col.col_name}
+                              onClick={() => handleSort(col.col_name)}
+                              className="px-3 py-2 text-left font-mono border-b border-r cursor-pointer select-none whitespace-nowrap"
+                              style={{
+                                borderColor: '#1e1e1e',
+                                background: isSelected ? '#1a1a1a' : isSorted ? '#151515' : '#111',
+                                color: isSorted ? '#ff6b35' : '#999',
+                              }}>
+                              <div className="flex items-center gap-1.5">
+                                <span className="px-1 rounded font-bold"
+                                  style={{ background: tc.bg, color: tc.color, fontSize: 8 }}>
+                                  {typeLabel(col.data_type)}
+                                </span>
+                                {col.col_name}
+                                {isSorted && <span>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                              </div>
+                            </th>
+                          )
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, ri) => (
+                        <tr key={ri}
+                          className="hover:bg-white/5 transition-colors"
+                          style={{ background: ri % 2 === 0 ? '#0a0a0a' : '#0d0d0d' }}>
+                          <td className="px-3 py-1.5 text-right border-r font-mono select-none"
+                            style={{ color: '#333', borderColor: '#1a1a1a' }}>
+                            {ri + 1}
+                          </td>
+                          {columns.map(col => {
+                            const val = row[col.col_name]
+                            const isNull = val === null || val === undefined
+                            const isSelected = selectedCol === col.col_name
+                            return (
+                              <td key={col.col_name}
+                                onClick={() => setSelectedCol(col.col_name)}
+                                className="px-3 py-1.5 border-r cursor-pointer whitespace-nowrap"
+                                style={{
+                                  borderColor: '#1a1a1a',
+                                  background: isSelected ? 'rgba(255,107,53,0.04)' : undefined,
+                                  color: isNull ? '#333' : '#ccc',
+                                  fontStyle: isNull ? 'italic' : undefined,
+                                  maxWidth: 300,
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                }}>
+                                {isNull ? 'null' : fmtCell(val)}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

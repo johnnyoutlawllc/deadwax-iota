@@ -637,6 +637,7 @@ export default function DeadWaxClient({
         <TableViewer
           schema={viewerTable.schema}
           table={viewerTable.table}
+          allTables={dbStats}
           onClose={() => setViewerTable(null)}
         />
       )}
