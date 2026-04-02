@@ -7,6 +7,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import TableViewer from './TableViewer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -473,7 +474,10 @@ const DB_CATEGORIES: { label: string; icon: string; tables: string[] }[] = [
   { label: 'TikTok', icon: '🎵', tables: ['tiktok_videos', 'tiktok_video_snapshots', 'tiktok_accounts'] },
 ]
 
-function DatabasePanel({ stats }: { stats: DbStatRow[] }) {
+function DatabasePanel({ stats, onViewTable }: {
+  stats: DbStatRow[]
+  onViewTable: (schema: string, table: string) => void
+}) {
   const byTable = Object.fromEntries(stats.map(r => [r.table_name, r]))
   const totalRows = stats.reduce((s, r) => s + Number(r.row_count), 0)
   const totalBytes = stats.reduce((s, r) => s + Number(r.size_bytes), 0)
@@ -482,6 +486,12 @@ function DatabasePanel({ stats }: { stats: DbStatRow[] }) {
     if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`
     if (bytes >= 1024) return `${Math.round(bytes / 1024)} kB`
     return `${bytes} B`
+  }
+
+  // Determine schema for a table name
+  function schemaFor(tableName: string): string {
+    const row = byTable[tableName]
+    return row?.schema_name ?? 'outlaw_data'
   }
 
   return (
@@ -509,12 +519,14 @@ function DatabasePanel({ stats }: { stats: DbStatRow[] }) {
                     <th className="text-right px-4 py-2.5 font-medium text-text-muted">Rows</th>
                     <th className="text-right px-4 py-2.5 font-medium text-text-muted hidden sm:table-cell">Size</th>
                     <th className="text-right px-4 py-2.5 font-medium text-text-muted hidden md:table-cell">Status</th>
+                    <th className="text-right px-4 py-2.5 font-medium text-text-muted">View</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cat.tables.map((tableName, i) => {
                     const row = byTable[tableName]
                     const rows = row ? Number(row.row_count) : 0
+                    const schema = schemaFor(tableName)
                     return (
                       <tr key={tableName} className={`border-b border-border last:border-0 ${i % 2 === 0 ? 'bg-background' : 'bg-surface'}`}>
                         <td className="px-4 py-3 font-mono text-xs text-text-secondary">{tableName}</td>
@@ -526,6 +538,15 @@ function DatabasePanel({ stats }: { stats: DbStatRow[] }) {
                           }}>
                             {rows > 0 ? 'has data' : 'empty'}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => onViewTable(schema, tableName)}
+                            className="text-xs px-2.5 py-1 rounded-lg border transition-all hover:border-accent hover:text-accent"
+                            style={{ borderColor: '#2a2a2a', color: '#666' }}
+                          >
+                            View Data →
+                          </button>
                         </td>
                       </tr>
                     )
@@ -550,6 +571,7 @@ export default function DeadWaxClient({
   facebookPosts, dbStats, userEmail,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('square')
+  const [viewerTable, setViewerTable] = useState<{ schema: string; table: string } | null>(null)
   const router = useRouter()
 
   async function handleSignOut() {
@@ -601,11 +623,23 @@ export default function DeadWaxClient({
             <TikTokPanel />
           )}
           {activeTab === 'database' && (
-            <DatabasePanel stats={dbStats} />
+            <DatabasePanel
+              stats={dbStats}
+              onViewTable={(schema, table) => setViewerTable({ schema, table })}
+            />
           )}
         </section>
 
       </main>
+
+      {/* Table Viewer overlay */}
+      {viewerTable && (
+        <TableViewer
+          schema={viewerTable.schema}
+          table={viewerTable.table}
+          onClose={() => setViewerTable(null)}
+        />
+      )}
     </div>
   )
 }
