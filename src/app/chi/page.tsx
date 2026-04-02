@@ -29,6 +29,7 @@ export default async function ChiPage() {
     { data: recentMedia },
     { data: catalogItems, count: catalogCount },
     { data: recentPayments },
+    { data: dbStats },
   ] = await Promise.all([
     supabase
       .schema('outlaw_data')
@@ -66,6 +67,8 @@ export default async function ChiPage() {
       .select('payment_id, amount_money, total_money, source_type, created_at, status, card_brand, last_4')
       .order('created_at', { ascending: false })
       .limit(10),
+
+    supabase.rpc('get_db_stats'),
   ])
 
   return (
@@ -76,6 +79,7 @@ export default async function ChiPage() {
       catalogItems={catalogItems ?? []}
       catalogCount={catalogCount ?? 0}
       recentPayments={recentPayments ?? []}
+      dbStats={dbStats ?? []}
       userEmail={user.email ?? ''}
     />
   )

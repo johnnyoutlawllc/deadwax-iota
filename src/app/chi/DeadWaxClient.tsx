@@ -54,6 +54,14 @@ interface Payment {
   last_4: string | null
 }
 
+interface DbStatRow {
+  schema_name: string
+  table_name: string
+  row_count: number
+  size_pretty: string
+  size_bytes: number
+}
+
 interface Props {
   accountHistory: AccountHistory[]
   recentInsights: InsightRow[]
@@ -61,6 +69,7 @@ interface Props {
   catalogItems: CatalogItem[]
   catalogCount: number
   recentPayments: Payment[]
+  dbStats: DbStatRow[]
   userEmail: string
 }
 
@@ -327,12 +336,139 @@ function SocialPanel({ accountHistory, recentInsights, recentMedia, recentPaymen
   )
 }
 
+// ─── Database Panel ───────────────────────────────────────────────────────────
+
+const DB_CATEGORIES: { label: string; icon: string; tables: string[] }[] = [
+  {
+    label: 'Square — Commerce',
+    icon: '🛒',
+    tables: ['square_catalog_items', 'square_orders', 'square_order_line_items', 'square_payments', 'square_customers', 'square_invoices', 'square_merchants', 'square_locations'],
+  },
+  {
+    label: 'Instagram',
+    icon: '📸',
+    tables: ['instagram_media', 'instagram_media_insights', 'instagram_demographics', 'instagram_account_history', 'instagram_insights'],
+  },
+  {
+    label: 'Facebook',
+    icon: '👥',
+    tables: ['facebook_posts', 'facebook_post_metrics'],
+  },
+  {
+    label: 'TikTok',
+    icon: '🎵',
+    tables: ['tiktok_videos', 'tiktok_video_snapshots', 'tiktok_accounts'],
+  },
+  {
+    label: 'Internal — Johnny Outlaw',
+    icon: '🏢',
+    tables: ['client_accounts', 'clients'],
+  },
+]
+
+function DatabasePanel({ stats }: { stats: DbStatRow[] }) {
+  const byTable = Object.fromEntries(stats.map(r => [r.table_name, r]))
+  const totalRows = stats.reduce((sum, r) => sum + Number(r.row_count), 0)
+  const totalBytes = stats.reduce((sum, r) => sum + Number(r.size_bytes), 0)
+
+  function fmtSize(bytes: number) {
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    if (bytes >= 1024) return `${Math.round(bytes / 1024)} kB`
+    return `${bytes} B`
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+
+      {/* Summary bar */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard label="Total Tables" value={stats.length} sub="across all schemas" />
+        <StatCard label="Total Rows" value={totalRows.toLocaleString()} sub="live records" accent />
+        <StatCard label="Total Size" value={fmtSize(totalBytes)} sub="on disk" />
+        <StatCard label="Schemas" value="outlaw_data + johnny_outlaw" sub="2 schemas" />
+      </div>
+
+      {/* Per-category breakdown */}
+      {DB_CATEGORIES.map(cat => {
+        const catStats = cat.tables.map(t => byTable[t]).filter(Boolean)
+        const catRows = catStats.reduce((s, r) => s + Number(r.row_count), 0)
+        const catBytes = catStats.reduce((s, r) => s + Number(r.size_bytes), 0)
+        const hasData = catRows > 0
+
+        return (
+          <section key={cat.label}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-accent">
+                {cat.icon} {cat.label}
+              </h3>
+              <span className="text-xs text-text-muted">
+                {catRows.toLocaleString()} rows · {fmtSize(catBytes)}
+              </span>
+            </div>
+            <div className="rounded-xl overflow-hidden border border-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-surface border-b border-border">
+                    <th className="text-left px-4 py-2.5 font-medium text-text-muted">Table</th>
+                    <th className="text-right px-4 py-2.5 font-medium text-text-muted">Rows</th>
+                    <th className="text-right px-4 py-2.5 font-medium text-text-muted hidden sm:table-cell">Size</th>
+                    <th className="text-right px-4 py-2.5 font-medium text-text-muted hidden md:table-cell">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cat.tables.map((tableName, i) => {
+                    const row = byTable[tableName]
+                    const rows = row ? Number(row.row_count) : 0
+                    const populated = rows > 0
+                    return (
+                      <tr
+                        key={tableName}
+                        className={`border-b border-border last:border-0 ${i % 2 === 0 ? 'bg-background' : 'bg-surface'}`}
+                      >
+                        <td className="px-4 py-3 font-mono text-xs text-text-secondary">{tableName}</td>
+                        <td className={`px-4 py-3 text-right font-semibold tabular-nums ${populated ? 'text-text-primary' : 'text-text-muted'}`}>
+                          {rows.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-right text-text-muted hidden sm:table-cell">
+                          {row?.size_pretty ?? '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right hidden md:table-cell">
+                          <span
+                            className="text-xs px-2 py-0.5 rounded-full"
+                            style={{
+                              background: populated ? '#1a2e1a' : '#1e1e1e',
+                              color: populated ? '#4ade80' : '#555',
+                            }}
+                          >
+                            {populated ? 'has data' : 'empty'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                {catStats.length === 0 && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={4} className="px-4 py-3 text-center text-text-muted text-xs">No stats available</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function DeadWaxClient({
-  accountHistory, recentInsights, recentMedia, catalogItems, catalogCount, recentPayments, userEmail,
+  accountHistory, recentInsights, recentMedia, catalogItems, catalogCount, recentPayments, dbStats, userEmail,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<'inventory' | 'social'>('inventory')
+  const [activeTab, setActiveTab] = useState<'inventory' | 'social' | 'database'>('inventory')
   const router = useRouter()
 
   const latest = accountHistory[0]
@@ -402,12 +538,15 @@ export default function DeadWaxClient({
 
         {/* Tabs */}
         <section>
-          <div className="flex gap-2 mb-6">
+          <div className="flex gap-2 mb-6 flex-wrap">
             <TabButton active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')}>
               🎵 Inventory
             </TabButton>
             <TabButton active={activeTab === 'social'} onClick={() => setActiveTab('social')}>
               📊 Social & Sales
+            </TabButton>
+            <TabButton active={activeTab === 'database'} onClick={() => setActiveTab('database')}>
+              🗄️ Database
             </TabButton>
           </div>
 
@@ -421,6 +560,9 @@ export default function DeadWaxClient({
               recentMedia={recentMedia}
               recentPayments={recentPayments}
             />
+          )}
+          {activeTab === 'database' && (
+            <DatabasePanel stats={dbStats} />
           )}
         </section>
 
