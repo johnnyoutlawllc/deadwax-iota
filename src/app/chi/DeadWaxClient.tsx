@@ -372,13 +372,13 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
   const hasFilter = !!(filterFormat || filterCondition || filterGenre || filterYear || filterDate)
   const filters   = { format: filterFormat, condition: filterCondition, genre: filterGenre, year: filterYear, date: filterDate }
 
-  // When filters active, re-derive each chart from flat facts,
-  // excluding each chart's own dimension so it shows full range with cross-filter applied
-  const activeDateData       = hasFilter ? aggByDate(applyFilters(flatFacts, filters, 'date'))           : salesByDate
-  const activeFormatData     = hasFilter ? aggByFormat(applyFilters(flatFacts, filters, 'format'))       : salesByFormat
-  const activeConditionData  = hasFilter ? aggByCondition(applyFilters(flatFacts, filters, 'condition')) : salesByCondition
-  const activeGenreData      = hasFilter ? aggByGenre(applyFilters(flatFacts, filters, 'genre'))         : catalogByGenre
-  const activeYearData       = hasFilter ? aggByYear(applyFilters(flatFacts, filters, 'year'))           : inventoryByYear
+  // Always derive from flat facts — consistent baseline whether filtered or not.
+  // Each chart excludes its own dimension so clicking a bar shows full range cross-filtered.
+  const activeDateData       = aggByDate(applyFilters(flatFacts, filters, 'date'))
+  const activeFormatData     = aggByFormat(applyFilters(flatFacts, filters, 'format'))
+  const activeConditionData  = aggByCondition(applyFilters(flatFacts, filters, 'condition'))
+  const activeGenreData      = aggByGenre(applyFilters(flatFacts, filters, 'genre'))
+  const activeYearData       = aggByYear(applyFilters(flatFacts, filters, 'year'))
 
   // Chart maxes
   const dateSlice    = activeDateData.slice(-30)

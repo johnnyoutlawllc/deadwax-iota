@@ -80,7 +80,7 @@ export default async function ChiPage() {
     supabase.rpc('get_square_sales_by_condition'),
     supabase.rpc('get_square_catalog_by_genre'),
     supabase.rpc('get_square_inventory_by_year'),
-    supabase.rpc('get_square_flat_facts'),
+    supabase.rpc('get_square_flat_facts').limit(10000),
   ])
 
   return (
