@@ -47,8 +47,9 @@ interface TableProfile {
 }
 
 interface PlatformGroup {
-  label: string
-  icon:  string
+  label:  string
+  icon:   string
+  order:  number
   tables: string[]
 }
 
@@ -60,14 +61,31 @@ interface Props {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PLATFORMS: PlatformGroup[] = [
-  { label: 'Square', icon: '🛒', tables: ['square_catalog_items','square_orders','square_order_line_items','square_payments','square_customers','square_invoices','square_merchants','square_locations'] },
-  { label: 'Instagram', icon: '📸', tables: ['instagram_media','instagram_media_insights','instagram_demographics','instagram_account_history','instagram_insights'] },
-  { label: 'Facebook', icon: '👥', tables: ['facebook_posts','facebook_post_metrics'] },
-  { label: 'TikTok', icon: '🎵', tables: ['tiktok_videos','tiktok_video_snapshots','tiktok_accounts'] },
-  { label: 'Internal', icon: '🏢', tables: ['client_accounts','clients'] },
-  { label: 'Enrichment', icon: '✨', tables: ['catalog_enrichment'] },
-]
+// ── Auto-derived from actual profile data — no hardcoded table list ────────────
+const PREFIX_META: Record<string, { label: string; icon: string; order: number }> = {
+  square:    { label: 'Square — Commerce', icon: '🛒', order: 1 },
+  instagram: { label: 'Instagram',         icon: '📸', order: 2 },
+  facebook:  { label: 'Facebook',          icon: '👥', order: 3 },
+  tiktok:    { label: 'TikTok',            icon: '🎵', order: 4 },
+  catalog:   { label: 'Enrichment',        icon: '✨', order: 5 },
+  client:    { label: 'Internal',          icon: '🏢', order: 6 },
+  johnny:    { label: 'Internal',          icon: '🏢', order: 6 },
+}
+
+function derivePlatforms(profiles: RawColumnProfile[]): PlatformGroup[] {
+  const seen  = new Set<string>()
+  const groups: Record<string, PlatformGroup> = {}
+  for (const p of profiles) {
+    if (seen.has(p.table_name)) continue
+    seen.add(p.table_name)
+    const prefix = p.table_name.split('_')[0]
+    const meta   = PREFIX_META[prefix] ?? { label: 'Other', icon: '📦', order: 99 }
+    const key    = meta.label
+    if (!groups[key]) groups[key] = { ...meta, tables: [] }
+    groups[key].tables.push(p.table_name)
+  }
+  return Object.values(groups).sort((a, b) => a.order - b.order)
+}
 
 const NUMERIC_TYPES = ['integer','bigint','smallint','numeric','real','double precision','money']
 const DATE_TYPES    = ['timestamp without time zone','timestamp with time zone','date','timestamptz','timestamp']
@@ -271,6 +289,9 @@ function TableBlock({ tableProfile, onViewTable }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function DatabaseMasterOverview({ profiles, dbStats, onViewTable }: Props) {
+  // Derive platform groups automatically from live profile data
+  const platforms = useMemo(() => derivePlatforms(profiles), [profiles])
+
   // Parse all raw profiles into structured form
   const tableProfiles = useMemo<Record<string, TableProfile>>(() => {
     const result: Record<string, TableProfile> = {}
@@ -311,8 +332,8 @@ export default function DatabaseMasterOverview({ profiles, dbStats, onViewTable 
         </p>
       </div>
 
-      {/* Platform groups */}
-      {PLATFORMS.map(platform => {
+      {/* Platform groups — derived automatically from live data */}
+      {platforms.map(platform => {
         const platformTables = platform.tables
           .map(name => tableProfiles[name])
           .filter(Boolean)

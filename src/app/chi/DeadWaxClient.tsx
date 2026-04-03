@@ -474,21 +474,37 @@ function TikTokPanel() {
 
 // ─── Database Panel ───────────────────────────────────────────────────────────
 
-const DB_CATEGORIES: { label: string; icon: string; tables: string[] }[] = [
-  { label: 'Square — Commerce', icon: '🛒', tables: ['square_catalog_items', 'square_orders', 'square_order_line_items', 'square_payments', 'square_customers', 'square_invoices', 'square_merchants', 'square_locations'] },
-  { label: 'Instagram', icon: '📸', tables: ['instagram_media', 'instagram_media_insights', 'instagram_demographics', 'instagram_account_history', 'instagram_insights'] },
-  { label: 'Facebook', icon: '👥', tables: ['facebook_posts', 'facebook_post_metrics'] },
-  { label: 'TikTok', icon: '🎵', tables: ['tiktok_videos', 'tiktok_video_snapshots', 'tiktok_accounts'] },
-  { label: 'Enrichment', icon: '🎵', tables: ['catalog_enrichment'] },
-]
+// ── Auto-grouping: new tables appear automatically based on name prefix ────────
+const PREFIX_META: Record<string, { label: string; icon: string; order: number }> = {
+  square:    { label: 'Square — Commerce', icon: '🛒', order: 1 },
+  instagram: { label: 'Instagram',         icon: '📸', order: 2 },
+  facebook:  { label: 'Facebook',          icon: '👥', order: 3 },
+  tiktok:    { label: 'TikTok',            icon: '🎵', order: 4 },
+  catalog:   { label: 'Enrichment',        icon: '✨', order: 5 },
+  client:    { label: 'Internal',          icon: '🏢', order: 6 },
+  johnny:    { label: 'Internal',          icon: '🏢', order: 6 },
+}
+
+function deriveCategories(stats: DbStatRow[]) {
+  const groups: Record<string, { label: string; icon: string; order: number; tables: string[] }> = {}
+  for (const row of stats) {
+    const prefix = row.table_name.split('_')[0]
+    const meta   = PREFIX_META[prefix] ?? { label: 'Other', icon: '📦', order: 99 }
+    const key    = meta.label
+    if (!groups[key]) groups[key] = { ...meta, tables: [] }
+    groups[key].tables.push(row.table_name)
+  }
+  return Object.values(groups).sort((a, b) => a.order - b.order)
+}
 
 function DatabasePanel({ stats, onViewTable }: {
   stats: DbStatRow[]
   onViewTable: (schema: string, table: string) => void
 }) {
-  const byTable = Object.fromEntries(stats.map(r => [r.table_name, r]))
-  const totalRows = stats.reduce((s, r) => s + Number(r.row_count), 0)
+  const byTable    = Object.fromEntries(stats.map(r => [r.table_name, r]))
+  const totalRows  = stats.reduce((s, r) => s + Number(r.row_count), 0)
   const totalBytes = stats.reduce((s, r) => s + Number(r.size_bytes), 0)
+  const categories = deriveCategories(stats)
 
   function fmtSize(bytes: number) {
     if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`
@@ -510,7 +526,7 @@ function DatabasePanel({ stats, onViewTable }: {
         <StatCard label="Tables" value={stats.length} sub="outlaw_data + johnny_outlaw" />
       </div>
 
-      {DB_CATEGORIES.map(cat => {
+      {categories.map(cat => {
         const catStats = cat.tables.map(t => byTable[t]).filter(Boolean)
         const catRows = catStats.reduce((s, r) => s + Number(r.row_count), 0)
         const catBytes = catStats.reduce((s, r) => s + Number(r.size_bytes), 0)
@@ -760,7 +776,18 @@ export default function DeadWaxClient({
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-xs text-text-muted hidden sm:block">Johnny Outlaw, LLC — Designed in Rockwall, TX</span>
+          <div className="hidden sm:flex flex-col items-end gap-0.5">
+            <span className="text-xs text-text-muted">Outlaw Apps — Designed in Rockwall, TX</span>
+            {process.env.NEXT_PUBLIC_BUILD_TIME && (
+              <span className="text-text-muted" style={{ fontSize: 10, opacity: 0.5 }}>
+                Updated{' '}
+                {new Date(process.env.NEXT_PUBLIC_BUILD_TIME).toLocaleString('en-US', {
+                  month: 'short', day: 'numeric', year: 'numeric',
+                  hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+                })}
+              </span>
+            )}
+          </div>
           <button onClick={handleSignOut} className="text-xs text-text-muted hover:text-accent transition-colors">Sign out</button>
         </div>
       </header>
