@@ -1,7 +1,7 @@
 // Dead Wax Records — Auth middleware
 // Johnny Outlaw, LLC — Designed in Rockwall, TX
 //
-// Protects all /chi routes. Only johnnyoutlawllc@gmail.com may access.
+// Protects /chi and /shop routes. Only johnnyoutlawllc@gmail.com may access.
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
@@ -59,5 +59,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/chi', '/chi/:path*'],
+  matcher: ['/chi', '/chi/:path*', '/shop', '/shop/:path*'],
 }
