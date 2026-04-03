@@ -110,13 +110,13 @@ interface SalesByCondition {
 
 interface CatalogByGenre {
   genre: string
-  inventory_count: number
+  times_sold: number
   revenue_cents: number
 }
 
 interface InventoryByYear {
   release_year: number
-  inventory_count: number
+  times_sold: number
   revenue_cents: number
 }
 
@@ -327,25 +327,25 @@ function aggByCondition(facts: FlatFact[]): SalesByCondition[] {
 }
 
 function aggByGenre(facts: FlatFact[]): CatalogByGenre[] {
-  const m: Record<string, { inventory_count: number; revenue_cents: number }> = {}
+  const m: Record<string, { times_sold: number; revenue_cents: number }> = {}
   facts.forEach(f => {
     const genres = (f.genres ?? '').split(',').map(g => g.trim()).filter(Boolean)
     genres.forEach(genre => {
-      if (!m[genre]) m[genre] = { inventory_count: 0, revenue_cents: 0 }
-      m[genre].inventory_count++
+      if (!m[genre]) m[genre] = { times_sold: 0, revenue_cents: 0 }
+      m[genre].times_sold++
       m[genre].revenue_cents += f.revenue_cents
     })
   })
-  return Object.entries(m).sort((a, b) => b[1].inventory_count - a[1].inventory_count)
+  return Object.entries(m).sort((a, b) => b[1].times_sold - a[1].times_sold)
     .slice(0, 20).map(([genre, v]) => ({ genre, ...v }))
 }
 
 function aggByYear(facts: FlatFact[]): InventoryByYear[] {
-  const m: Record<number, { inventory_count: number; revenue_cents: number }> = {}
+  const m: Record<number, { times_sold: number; revenue_cents: number }> = {}
   facts.forEach(f => {
     if (!f.release_year) return
-    if (!m[f.release_year]) m[f.release_year] = { inventory_count: 0, revenue_cents: 0 }
-    m[f.release_year].inventory_count++
+    if (!m[f.release_year]) m[f.release_year] = { times_sold: 0, revenue_cents: 0 }
+    m[f.release_year].times_sold++
     m[f.release_year].revenue_cents += f.revenue_cents
   })
   return Object.entries(m).sort((a, b) => Number(a[0]) - Number(b[0]))
@@ -388,9 +388,9 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
   const maxFmtRev    = Math.max(...activeFormatData.map(f => f.revenue_cents), 1)
   const maxCondSold  = Math.max(...activeConditionData.map(c => c.times_sold), 1)
   const maxCondRev   = Math.max(...activeConditionData.map(c => c.revenue_cents), 1)
-  const maxGenreCount = Math.max(...activeGenreData.map(g => g.inventory_count), 1)
+  const maxGenreSold  = Math.max(...activeGenreData.map(g => g.times_sold), 1)
   const maxGenreRev   = Math.max(...activeGenreData.map(g => g.revenue_cents), 1)
-  const maxYearCount  = Math.max(...activeYearData.map(y => y.inventory_count), 1)
+  const maxYearSold   = Math.max(...activeYearData.map(y => y.times_sold), 1)
   const maxYearRev    = Math.max(...activeYearData.map(y => y.revenue_cents), 1)
 
   // Filtered KPI totals
@@ -401,6 +401,30 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* ── Square sub-tab nav ───────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 border-b pb-3" style={{ borderColor: '#1e1e1e' }}>
+        <button
+          className="px-4 py-1.5 text-sm font-semibold rounded-lg transition-all"
+          style={{ background: '#ff6b35', color: '#fff' }}
+        >
+          📊 Sales
+        </button>
+        <button
+          className="px-4 py-1.5 text-sm rounded-lg transition-all cursor-not-allowed"
+          style={{ color: '#444', border: '1px solid #222' }}
+          title="Coming soon"
+        >
+          📦 Inventory
+        </button>
+        <button
+          className="px-4 py-1.5 text-sm rounded-lg transition-all cursor-not-allowed"
+          style={{ color: '#444', border: '1px solid #222' }}
+          title="Coming soon"
+        >
+          👥 Customers
+        </button>
+      </div>
 
       {/* ── Active filter bar — TOP ──────────────────────────────────────────── */}
       {hasFilter && (
@@ -546,15 +570,15 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
 
       {/* ── Row 3: Catalog by Genre + Inventory by Release Year ───────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ChartCard title="Catalog by Genre" subtitle="click to filter">
+        <ChartCard title="Sales by Genre" subtitle="click to filter">
           <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
             <span style={{ width: 120 }} />
-            <span className="flex-1 text-center">Inventory Count</span>
+            <span className="flex-1 text-center">Times Sold</span>
             <span className="flex-1 text-center">Sales</span>
           </div>
           {activeGenreData.length > 0 ? activeGenreData.slice(0, 15).map(g => (
             <DualBarRow key={g.genre} label={g.genre}
-              val1={g.inventory_count} max1={maxGenreCount} val2={g.revenue_cents} max2={maxGenreRev}
+              val1={g.times_sold} max1={maxGenreSold} val2={g.revenue_cents} max2={maxGenreRev}
               fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
               selected={filterGenre === g.genre}
               onClick={() => setFilterGenre(p => p === g.genre ? null : g.genre)} />
@@ -569,14 +593,14 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
           )}
         </ChartCard>
 
-        <ChartCard title="Inventory by Release Year" subtitle="click to filter">
+        <ChartCard title="Sales by Release Year" subtitle="click to filter">
           {activeYearData.length > 0 ? (
             <div className="flex flex-col gap-2">
               <div>
-                <div className="text-xs mb-1" style={{ color: '#555' }}>Inventory Count</div>
+                <div className="text-xs mb-1" style={{ color: '#555' }}>Times Sold</div>
                 <svg viewBox={`0 0 ${activeYearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
                   {activeYearData.map((y, i) => {
-                    const barH = (y.inventory_count / maxYearCount) * 36
+                    const barH = (y.times_sold / maxYearSold) * 36
                     return <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
                       fill={ORANGE} opacity={filterYear === y.release_year ? 1 : 0.7} rx={1}
                       style={{ cursor: 'pointer' }}
