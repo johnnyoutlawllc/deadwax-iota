@@ -329,16 +329,45 @@ function DetailPanel({ profile }: { profile: ColumnProfile }) {
   )
 }
 
-// ─── Main TableViewer ─────────────────────────────────────────────────────────
+// ─── Sidebar auto-grouping ────────────────────────────────────────────────────
 
-const SIDEBAR_GROUPS = [
-  { label: 'Views', icon: '👁', tables: ['catalog_with_sales'] },
-  { label: 'Square', icon: '🛒', tables: ['square_catalog_items','square_orders','square_order_line_items','square_payments','square_customers','square_invoices','square_merchants','square_locations'] },
-  { label: 'Instagram', icon: '📸', tables: ['instagram_media','instagram_media_insights','instagram_demographics','instagram_account_history','instagram_insights'] },
-  { label: 'Facebook', icon: '👥', tables: ['facebook_posts','facebook_post_metrics'] },
-  { label: 'TikTok', icon: '🎵', tables: ['tiktok_videos','tiktok_video_snapshots','tiktok_accounts'] },
-  { label: 'Internal', icon: '🏢', tables: ['client_accounts','clients'] },
-]
+const PREFIX_META: Record<string, { label: string; icon: string; order: number }> = {
+  square:    { label: 'Square',    icon: '🛒', order: 2 },
+  instagram: { label: 'Instagram', icon: '📸', order: 3 },
+  facebook:  { label: 'Facebook',  icon: '👥', order: 4 },
+  tiktok:    { label: 'TikTok',    icon: '🎵', order: 5 },
+  catalog:   { label: 'Enrichment',icon: '✨', order: 6 },
+  client:    { label: 'Internal',  icon: '🏢', order: 7 },
+  johnny:    { label: 'Internal',  icon: '🏢', order: 7 },
+  view:      { label: 'Views',     icon: '👁', order: 1 },
+}
+
+function deriveSidebarGroups(allTables: TableEntry[]) {
+  const viewsGroup: { label: string; icon: string; order: number; tables: TableEntry[] } =
+    { label: 'Views', icon: '👁', order: 1, tables: [] }
+
+  const tableGroups: Record<string, { label: string; icon: string; order: number; tables: TableEntry[] }> = {}
+
+  for (const t of allTables) {
+    if (t.size_pretty === 'view') {
+      viewsGroup.tables.push(t)
+      continue
+    }
+    const prefix = t.table_name.split('_')[0]
+    const meta   = PREFIX_META[prefix] ?? { label: 'Other', icon: '📦', order: 99 }
+    const key    = meta.label
+    if (!tableGroups[key]) tableGroups[key] = { ...meta, tables: [] }
+    tableGroups[key].tables.push(t)
+  }
+
+  const result = Object.values(tableGroups).sort((a, b) => a.order - b.order)
+  if (viewsGroup.tables.length > 0) result.unshift(viewsGroup)
+  return result
+}
+
+const ROW_LIMIT_OPTIONS = [100, 500, 1000, 5000]
+
+// ─── Main TableViewer ─────────────────────────────────────────────────────────
 
 export default function TableViewer({ schema, table, allTables, onClose }: Props) {
   const [activeSchema, setActiveSchema] = useState(schema)
@@ -350,12 +379,12 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
   const [sortCol, setSortCol]   = useState<string | null>(null)
   const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('asc')
   const [selectedCol, setSelectedCol] = useState<string | null>(null)
+  const [rowLimit, setRowLimit] = useState(100)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [exportingFull, setExportingFull]   = useState(false)
 
-  // Build a lookup: table_name → { schema, rows, size }
-  const tableIndex = useMemo(() =>
-    Object.fromEntries(allTables.map(t => [t.table_name, t])),
-    [allTables]
-  )
+  // Auto-derive sidebar groups from live allTables data
+  const sidebarGroups = useMemo(() => deriveSidebarGroups(allTables), [allTables])
 
   function switchTable(newSchema: string, newTable: string) {
     if (newTable === activeTable) return
@@ -368,11 +397,17 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
     setColumns([])
   }
 
-  const fetchData = useCallback(async (col: string | null, dir: 'asc' | 'desc', sc = activeSchema, tbl = activeTable) => {
+  const fetchData = useCallback(async (
+    col: string | null,
+    dir: 'asc' | 'desc',
+    sc  = activeSchema,
+    tbl = activeTable,
+    lim = rowLimit,
+  ) => {
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams({ schema: sc, table: tbl, dir })
+      const params = new URLSearchParams({ schema: sc, table: tbl, dir, limit: String(lim) })
       if (col) params.set('sort', col)
       const res = await fetch(`/api/chi/table-preview?${params}`)
       if (!res.ok) throw new Error((await res.json()).error)
@@ -385,15 +420,15 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
     } finally {
       setLoading(false)
     }
-  }, [activeSchema, activeTable])
+  }, [activeSchema, activeTable, rowLimit])
 
-  useEffect(() => { fetchData(null, 'asc', activeSchema, activeTable) }, [activeSchema, activeTable])
+  useEffect(() => { fetchData(null, 'asc', activeSchema, activeTable, rowLimit) }, [activeSchema, activeTable, rowLimit])
 
   function handleSort(col: string) {
     const newDir = sortCol === col && sortDir === 'asc' ? 'desc' : 'asc'
     setSortCol(col)
     setSortDir(newDir)
-    fetchData(col, newDir, activeSchema, activeTable)
+    fetchData(col, newDir, activeSchema, activeTable, rowLimit)
   }
 
   const profiles = useMemo(() => buildProfiles(rows, columns), [rows, columns])
@@ -447,8 +482,43 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
     URL.revokeObjectURL(url)
   }
 
+  async function exportFullTable() {
+    setExportingFull(true)
+    setExportMenuOpen(false)
+    try {
+      const params = new URLSearchParams({ schema: activeSchema, table: activeTable, dir: sortDir, limit: '10000' })
+      if (sortCol) params.set('sort', sortCol)
+      const res = await fetch(`/api/chi/table-preview?${params}`)
+      if (!res.ok) throw new Error('Failed to fetch full table')
+      const json = await res.json()
+      const allRows: Record<string, unknown>[] = json.rows ?? []
+      const cols: ColumnMeta[] = json.columns ?? columns
+
+      const header = cols.map(c => c.col_name)
+      const data = allRows.map(row => cols.map(c => {
+        const val = row[c.col_name]
+        if (val === null || val === undefined) return ''
+        if (typeof val === 'object') return JSON.stringify(val)
+        return val
+      }))
+      const ws = XLSX.utils.aoa_to_sheet([header, ...data])
+      ws['!cols'] = header.map((h, i) => {
+        const maxLen = Math.max(h.length, ...data.slice(0, 50).map(r => String(r[i] ?? '').length))
+        return { wch: Math.min(maxLen + 2, 40) }
+      })
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, activeTable.slice(0, 31))
+      XLSX.writeFile(wb, `${activeSchema}.${activeTable}.full.xlsx`)
+    } catch (e) {
+      console.error('Full export failed:', e)
+    } finally {
+      setExportingFull(false)
+    }
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0a0a0a' }}>
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0a0a0a' }}
+      onClick={() => { if (exportMenuOpen) setExportMenuOpen(false) }}>
 
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-3 border-b shrink-0"
@@ -472,16 +542,68 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
               sorted by <span style={{ color: '#ff6b35' }}>{sortCol}</span> {sortDir === 'asc' ? '↑' : '↓'}
             </span>
           )}
+
+          {/* Row limit selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs" style={{ color: '#555' }}>Rows:</span>
+            <select
+              value={rowLimit}
+              onChange={e => setRowLimit(Number(e.target.value))}
+              className="text-xs rounded-lg px-2 py-1 border"
+              style={{ background: '#111', color: '#aaa', borderColor: '#2a2a2a', cursor: 'pointer' }}
+            >
+              {ROW_LIMIT_OPTIONS.map(n => (
+                <option key={n} value={n}>{n.toLocaleString()}</option>
+              ))}
+            </select>
+          </div>
+
           {!loading && rows.length > 0 && (
             <div className="flex items-center gap-1.5">
-              <button
-                onClick={exportToExcel}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-90 active:scale-95"
-                style={{ background: '#1a6b2a', color: '#4ade80', border: '1px solid #2a3a2a' }}
-                title="Export to Excel (.xlsx)"
-              >
-                <span>⬇</span> Excel
-              </button>
+              {/* Excel export — dropdown */}
+              <div className="relative">
+                <div className="flex items-center rounded-lg overflow-hidden border" style={{ borderColor: '#2a3a2a' }}>
+                  <button
+                    onClick={exportToExcel}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 font-medium transition-all hover:opacity-90 active:scale-95"
+                    style={{ background: '#1a6b2a', color: '#4ade80' }}
+                    title={`Export ${rows.length} rows to Excel`}
+                  >
+                    <span>⬇</span> Excel
+                  </button>
+                  <button
+                    onClick={() => setExportMenuOpen(o => !o)}
+                    className="text-xs px-1.5 py-1.5 border-l font-medium transition-all hover:opacity-90"
+                    style={{ background: '#1a6b2a', color: '#4ade80', borderColor: '#2a3a2a' }}
+                    title="More export options"
+                  >
+                    ▾
+                  </button>
+                </div>
+                {exportMenuOpen && (
+                  <div className="absolute right-0 mt-1 rounded-lg border shadow-xl z-50 overflow-hidden"
+                    style={{ background: '#111', borderColor: '#2a2a2a', minWidth: 180, top: '100%' }}>
+                    <button
+                      onClick={() => { exportToExcel(); setExportMenuOpen(false) }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                      style={{ color: '#aaa' }}
+                    >
+                      <span style={{ color: '#4ade80' }}>⬇</span> Sample ({rows.length.toLocaleString()} rows)
+                    </button>
+                    <div style={{ borderTop: '1px solid #1e1e1e' }} />
+                    <button
+                      onClick={exportFullTable}
+                      disabled={exportingFull}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                      style={{ color: exportingFull ? '#555' : '#aaa' }}
+                    >
+                      <span style={{ color: '#f59e0b' }}>⬇</span>{' '}
+                      {exportingFull ? 'Fetching all rows…' : 'Full Table (up to 10k rows)'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={exportToCSV}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-90 active:scale-95"
@@ -511,7 +633,7 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
               Tables &amp; Views
             </span>
           </div>
-          {SIDEBAR_GROUPS.map(group => (
+          {sidebarGroups.map(group => (
             <div key={group.label}>
               <div className="px-3 pt-3 pb-1 flex items-center gap-1.5">
                 <span style={{ fontSize: 11 }}>{group.icon}</span>
@@ -519,16 +641,16 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
                   {group.label}
                 </span>
               </div>
-              {group.tables.map(tbl => {
-                const meta = tableIndex[tbl]
+              {group.tables.map(entry => {
+                const tbl      = entry.table_name
                 const isActive = tbl === activeTable
-                const rowCount = meta ? Number(meta.row_count) : 0
-                const isView = meta?.size_pretty === 'view'
-                const schema = meta?.schema_name ?? 'outlaw_data'
+                const rowCount = Number(entry.row_count)
+                const isView   = entry.size_pretty === 'view'
+                const sc       = entry.schema_name
                 return (
                   <button
                     key={tbl}
-                    onClick={() => switchTable(schema, tbl)}
+                    onClick={() => switchTable(sc, tbl)}
                     className="w-full text-left px-3 py-1.5 flex items-center justify-between gap-2 transition-colors"
                     style={{
                       background: isActive ? 'rgba(255,107,53,0.12)' : 'transparent',

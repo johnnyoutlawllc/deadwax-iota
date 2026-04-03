@@ -21,6 +21,8 @@ export async function GET(request: Request) {
   const table   = searchParams.get('table')   ?? ''
   const sortCol = searchParams.get('sort')    ?? null
   const sortDir = searchParams.get('dir')     ?? 'asc'
+  const limitRaw = parseInt(searchParams.get('limit') ?? '100', 10)
+  const limit   = isNaN(limitRaw) ? 100 : Math.min(Math.max(limitRaw, 1), 10000)
 
   if (!ALLOWED_SCHEMAS.includes(schema)) {
     return NextResponse.json({ error: 'Schema not allowed' }, { status: 400 })
@@ -35,7 +37,7 @@ export async function GET(request: Request) {
       p_table:    table,
       p_sort_col: sortCol,
       p_sort_dir: sortDir,
-      p_limit:    100,
+      p_limit:    limit,
     }),
     supabase.rpc('get_table_columns', {
       p_schema: schema,
