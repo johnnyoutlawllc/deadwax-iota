@@ -6,6 +6,13 @@ export const metadata: Metadata = {
   description:
     "The official hub for apps built by Johnny Outlaw, LLC. Shutterfield, SixGuess, What a Great Day, and more.",
   keywords: ["Outlaw Apps", "Johnny Outlaw", "Shutterfield", "SixGuess", "What a Great Day"],
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/deadwax-icon-32.png', type: 'image/png', sizes: '32x32' },
+    ],
+    apple: { url: '/deadwax-icon.png', sizes: '192x192', type: 'image/png' },
+  },
 };
 
 export default function RootLayout({
