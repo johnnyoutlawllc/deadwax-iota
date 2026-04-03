@@ -332,6 +332,7 @@ function DetailPanel({ profile }: { profile: ColumnProfile }) {
 // ─── Main TableViewer ─────────────────────────────────────────────────────────
 
 const SIDEBAR_GROUPS = [
+  { label: 'Views', icon: '👁', tables: ['catalog_with_sales'] },
   { label: 'Square', icon: '🛒', tables: ['square_catalog_items','square_orders','square_order_line_items','square_payments','square_customers','square_invoices','square_merchants','square_locations'] },
   { label: 'Instagram', icon: '📸', tables: ['instagram_media','instagram_media_insights','instagram_demographics','instagram_account_history','instagram_insights'] },
   { label: 'Facebook', icon: '👥', tables: ['facebook_posts','facebook_post_metrics'] },
@@ -507,7 +508,7 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
           style={{ borderColor: '#1e1e1e', background: '#0d0d0d', scrollbarWidth: 'thin' }}>
           <div className="px-3 py-2 border-b" style={{ borderColor: '#1e1e1e' }}>
             <span style={{ fontSize: 9, color: '#444', textTransform: 'uppercase', letterSpacing: 2 }}>
-              Tables
+              Tables &amp; Views
             </span>
           </div>
           {SIDEBAR_GROUPS.map(group => (
@@ -522,6 +523,7 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
                 const meta = tableIndex[tbl]
                 const isActive = tbl === activeTable
                 const rowCount = meta ? Number(meta.row_count) : 0
+                const isView = meta?.size_pretty === 'view'
                 const schema = meta?.schema_name ?? 'outlaw_data'
                 return (
                   <button
@@ -535,13 +537,24 @@ export default function TableViewer({ schema, table, allTables, onClose }: Props
                   >
                     <span className="font-mono truncate" style={{
                       fontSize: 11,
-                      color: isActive ? '#ff6b35' : rowCount > 0 ? '#aaa' : '#444',
+                      color: isActive ? '#ff6b35' : (rowCount > 0 || isView) ? '#aaa' : '#444',
                     }}>
                       {tbl}
                     </span>
-                    <span style={{ fontSize: 10, color: '#444', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                      {rowCount > 0 ? rowCount.toLocaleString() : '—'}
-                    </span>
+                    {isView ? (
+                      <span style={{
+                        fontSize: 8, color: '#a78bfa', background: '#1e1a2e',
+                        border: '1px solid #2e2a4e', borderRadius: 3,
+                        padding: '1px 4px', flexShrink: 0, fontWeight: 700,
+                        letterSpacing: 0.5, textTransform: 'uppercase',
+                      }}>
+                        VIEW
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 10, color: '#444', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                        {rowCount > 0 ? rowCount.toLocaleString() : '—'}
+                      </span>
+                    )}
                   </button>
                 )
               })}
