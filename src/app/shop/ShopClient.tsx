@@ -436,31 +436,16 @@ export default function ShopClient() {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
   const hasFilters = !!(filterFormat || filterGenre || filterDecade || filterSearch)
 
-  // ── Load summary (cross-filtered) + catalog items together ───────────────
-  const initialLoad = useRef(true)
-  const fetchAll = useCallback(async (p: number, isSearch = false) => {
-    // Only show full spinner on very first load — filter changes keep content visible
-    if (p === 1 && initialLoad.current) setLoading(true)
-    else setRefreshing(true)
-    if (!isSearch) setSummaryLoading(true)
+  // ── Fetch helper (never touches `loading` — that's only for initial mount) ─
+  const fetchData = useCallback(async (p: number, fmt: string, genre: string, decade: number, search: string) => {
+    setRefreshing(true)
+    if (p === 1) setSummaryLoading(true)
 
-    const summaryParams = {
-      p_format: filterFormat || null,
-      p_genre: filterGenre || null,
-      p_decade: filterDecade || null,
-      p_search: filterSearch || null,
-    }
+    const summaryParams = { p_format: fmt || null, p_genre: genre || null, p_decade: decade || null, p_search: search || null }
     const itemParams = {
-      p_search: filterSearch || null,
-      p_format: filterFormat || null,
-      p_condition: null,
-      p_genre: filterGenre || null,
-      p_decade: filterDecade || null,
-      p_item_type: null,
-      p_performance: null,
-      p_sort: 'popular',
-      p_page: p,
-      p_page_size: PAGE_SIZE,
+      p_search: search || null, p_format: fmt || null, p_condition: null,
+      p_genre: genre || null, p_decade: decade || null, p_item_type: null,
+      p_performance: null, p_sort: 'popular', p_page: p, p_page_size: PAGE_SIZE,
     }
 
     const [sumRes, itemRes] = await Promise.all([
@@ -474,43 +459,47 @@ export default function ShopClient() {
     if (itemRes.data && (itemRes.data as ShopItem[]).length > 0) {
       setItems(itemRes.data as ShopItem[])
       setTotalCount(Number((itemRes.data as ShopItem[])[0].total_count))
-    } else {
-      setItems([])
-      setTotalCount(0)
-    }
-    setLoading(false)
+    } else { setItems([]); setTotalCount(0) }
     setRefreshing(false)
-    initialLoad.current = false
+    setLoading(false)           // clears initial spinner on first call, no-op after
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterFormat, filterGenre, filterDecade, filterSearch])
+  }, [])
 
-  // Re-fetch when chart filters change (instant)
+  // ── Initial load ────────────────────────────────────────────────────────────
+  const mounted = useRef(false)
   useEffect(() => {
+    if (!mounted.current) { mounted.current = true; fetchData(1, '', '', 0, '') }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Re-fetch when chart filters change ──────────────────────────────────────
+  useEffect(() => {
+    if (!mounted.current) return           // skip the mount render
     if (filterSearch) {
       clearTimeout(searchTimer.current)
-      searchTimer.current = setTimeout(() => { setPage(1); fetchAll(1, true) }, 380)
+      searchTimer.current = setTimeout(() => { setPage(1); fetchData(1, filterFormat, filterGenre, filterDecade, filterSearch) }, 380)
       return () => clearTimeout(searchTimer.current)
     }
     setPage(1)
-    fetchAll(1)
-  }, [fetchAll, filterSearch])
+    fetchData(1, filterFormat, filterGenre, filterDecade, filterSearch)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterFormat, filterGenre, filterDecade, filterSearch])
 
-  // Pagination (items only, no summary re-fetch)
+  // ── Pagination (items only, no summary re-fetch) ────────────────────────────
   useEffect(() => {
     if (page > 1) {
-      (async () => {
-        setLoading(true)
-        const { data } = await supabase.rpc('get_shop_items', {
-          p_search: filterSearch || null, p_format: filterFormat || null,
-          p_condition: null, p_genre: filterGenre || null, p_decade: filterDecade || null,
-          p_item_type: null, p_performance: null, p_sort: 'popular', p_page: page, p_page_size: PAGE_SIZE,
-        })
-        setLoading(false)
+      setRefreshing(true)
+      supabase.rpc('get_shop_items', {
+        p_search: filterSearch || null, p_format: filterFormat || null,
+        p_condition: null, p_genre: filterGenre || null, p_decade: filterDecade || null,
+        p_item_type: null, p_performance: null, p_sort: 'popular', p_page: page, p_page_size: PAGE_SIZE,
+      }).then(({ data }) => {
+        setRefreshing(false)
         if (data && (data as ShopItem[]).length > 0) {
           setItems(data as ShopItem[])
           setTotalCount(Number((data as ShopItem[])[0].total_count))
         }
-      })()
+      })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page])
@@ -557,14 +546,19 @@ export default function ShopClient() {
       {/* Header */}
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(10,10,10,0.96)', backdropFilter: 'blur(14px)', borderBottom: `1px solid ${BORDER}` }}>
         <div style={{ maxWidth: 1680, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 16, height: 56 }}>
-          <a href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-            <svg width="18" height="18" viewBox="0 0 22 22" style={{ marginRight: 4 }}>
-              <circle cx="11" cy="11" r="10.5" fill="none" stroke={ORANGE} strokeWidth="1.5"/>
-              <circle cx="11" cy="11" r="7" fill="none" stroke={ORANGE} strokeWidth="1" opacity="0.5"/>
-              <circle cx="11" cy="11" r="1.5" fill={ORANGE}/>
-            </svg>
-            <span style={{ color: ORANGE, fontWeight: 800, fontSize: 16 }}>Dead Wax</span>
-            <span style={{ color: TEXT, fontWeight: 300, fontSize: 16, marginLeft: 4 }}>Records</span>
+          <a href="/chi" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <img src="/images/deadwax-logo.avif" alt="Dead Wax Records" width={36} height={36} style={{ borderRadius: 8, objectFit: 'contain' }} />
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ color: ORANGE, fontWeight: 800, fontSize: 16 }}>Dead Wax</span>
+                <span style={{ color: TEXT, fontWeight: 300, fontSize: 16 }}>Records</span>
+              </div>
+              {process.env.NEXT_PUBLIC_BUILD_TIME && (
+                <span style={{ fontSize: 9, color: MUTED, opacity: 0.6, lineHeight: 1 }}>
+                  Updated {new Date(process.env.NEXT_PUBLIC_BUILD_TIME).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}
+                </span>
+              )}
+            </div>
           </a>
 
           <div style={{ flex: 1, maxWidth: 440, position: 'relative' }}>
