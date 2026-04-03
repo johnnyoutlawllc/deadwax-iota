@@ -435,21 +435,18 @@ export default function ShopClient() {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
   const hasFilters = !!(filterFormat || filterGenre || filterDecade || filterSearch)
 
-  // ── Load summary ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    (async () => {
-      setSummaryLoading(true)
-      const { data } = await supabase.rpc('get_shop_summary')
-      if (data) setSummary(data as Summary)
-      setSummaryLoading(false)
-    })()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // ── Load summary (cross-filtered) + catalog items together ───────────────
+  const fetchAll = useCallback(async (p: number, isSearch = false) => {
+    if (p === 1) setLoading(true)
+    if (!isSearch) setSummaryLoading(true)
 
-  // ── Load catalog items ──────────────────────────────────────────────────────
-  const fetchItems = useCallback(async (p: number) => {
-    setLoading(true)
-    const { data } = await supabase.rpc('get_shop_items', {
+    const summaryParams = {
+      p_format: filterFormat || null,
+      p_genre: filterGenre || null,
+      p_decade: filterDecade || null,
+      p_search: filterSearch || null,
+    }
+    const itemParams = {
       p_search: filterSearch || null,
       p_format: filterFormat || null,
       p_condition: null,
@@ -460,31 +457,55 @@ export default function ShopClient() {
       p_sort: 'popular',
       p_page: p,
       p_page_size: PAGE_SIZE,
-    })
-    setLoading(false)
-    if (data && data.length > 0) {
-      setItems(data as ShopItem[])
-      setTotalCount(Number((data as ShopItem[])[0].total_count))
+    }
+
+    const [sumRes, itemRes] = await Promise.all([
+      p === 1 ? supabase.rpc('get_shop_summary', summaryParams) : Promise.resolve({ data: null }),
+      supabase.rpc('get_shop_items', itemParams),
+    ])
+
+    if (sumRes.data) setSummary(sumRes.data as Summary)
+    setSummaryLoading(false)
+
+    if (itemRes.data && (itemRes.data as ShopItem[]).length > 0) {
+      setItems(itemRes.data as ShopItem[])
+      setTotalCount(Number((itemRes.data as ShopItem[])[0].total_count))
     } else {
       setItems([])
       setTotalCount(0)
     }
+    setLoading(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterFormat, filterGenre, filterDecade, filterSearch])
 
+  // Re-fetch when chart filters change (instant)
   useEffect(() => {
-    // Debounce search, instant for chart filters
     if (filterSearch) {
       clearTimeout(searchTimer.current)
-      searchTimer.current = setTimeout(() => { setPage(1); fetchItems(1) }, 380)
+      searchTimer.current = setTimeout(() => { setPage(1); fetchAll(1, true) }, 380)
       return () => clearTimeout(searchTimer.current)
     }
     setPage(1)
-    fetchItems(1)
-  }, [fetchItems, filterSearch])
+    fetchAll(1)
+  }, [fetchAll, filterSearch])
 
+  // Pagination (items only, no summary re-fetch)
   useEffect(() => {
-    if (page > 1) fetchItems(page)
+    if (page > 1) {
+      (async () => {
+        setLoading(true)
+        const { data } = await supabase.rpc('get_shop_items', {
+          p_search: filterSearch || null, p_format: filterFormat || null,
+          p_condition: null, p_genre: filterGenre || null, p_decade: filterDecade || null,
+          p_item_type: null, p_performance: null, p_sort: 'popular', p_page: page, p_page_size: PAGE_SIZE,
+        })
+        setLoading(false)
+        if (data && (data as ShopItem[]).length > 0) {
+          setItems(data as ShopItem[])
+          setTotalCount(Number((data as ShopItem[])[0].total_count))
+        }
+      })()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page])
 
