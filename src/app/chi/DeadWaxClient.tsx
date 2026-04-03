@@ -89,6 +89,28 @@ interface SquareKpis {
   total_sales_cents: number
 }
 
+interface InventoryKpis {
+  total_items: number
+  named_releases: number
+  generic_stock: number
+  items_with_sales: number
+  zero_sales_items: number
+  hot_items: number
+  enriched_items: number
+}
+
+interface InventoryFlatFact {
+  format: string
+  condition: string
+  item_type: string        // 'Named Release' | 'Generic Stock'
+  performance_tier: string // 'Hot' | 'Selling' | 'Zero Sales'
+  times_sold: number
+  revenue_cents: number
+  genres: string | null
+  release_year: number | null
+  created_at: string | null
+}
+
 interface SalesByDate {
   sale_date: string
   order_count: number
@@ -140,6 +162,8 @@ interface Props {
   squareCatalogByGenre: CatalogByGenre[]
   squareInventoryByYear: InventoryByYear[]
   squareFlatFacts: FlatFact[]
+  inventoryKpis: InventoryKpis | null
+  inventoryFlatFacts: InventoryFlatFact[]
   userEmail: string
 }
 
@@ -877,6 +901,470 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
   )
 }
 
+// ─── Inventory Panel ──────────────────────────────────────────────────────────
+
+const BLUE = '#4dabf7'
+
+// Inventory filter type (mirrors sales ActiveFilters but for catalog dimensions)
+type InvFilters = {
+  format: string | null
+  condition: string | null
+  item_type: string | null
+  tier: string | null
+  genre: string | null
+  decade: number | null
+  release_year: number | null
+}
+type InvExclude = keyof InvFilters | null
+
+function applyInvFilters(facts: InventoryFlatFact[], f: InvFilters, exclude: InvExclude = null): InventoryFlatFact[] {
+  return facts.filter(row => {
+    if (exclude !== 'format'    && f.format    && row.format    !== f.format)    return false
+    if (exclude !== 'condition' && f.condition && row.condition !== f.condition) return false
+    if (exclude !== 'item_type' && f.item_type && row.item_type !== f.item_type) return false
+    if (exclude !== 'tier'      && f.tier      && row.performance_tier !== f.tier) return false
+    if (exclude !== 'release_year' && f.release_year != null && row.release_year !== f.release_year) return false
+    if (exclude !== 'decade'    && f.decade != null) {
+      if (row.release_year == null || row.release_year < f.decade || row.release_year > f.decade + 9) return false
+    }
+    if (exclude !== 'genre' && f.genre) {
+      const gl = (row.genres ?? '').split(',').map(g => g.trim())
+      if (!gl.includes(f.genre!)) return false
+    }
+    return true
+  })
+}
+
+// Aggregation helpers for inventory
+type InvByDim = { label: string; item_count: number; times_sold: number; revenue_cents: number }
+
+function invAggBy(facts: InventoryFlatFact[], key: keyof InventoryFlatFact): InvByDim[] {
+  const m: Record<string, { item_count: number; times_sold: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    const v = String(f[key] ?? 'Unknown')
+    if (!m[v]) m[v] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
+    m[v].item_count++
+    m[v].times_sold   += f.times_sold
+    m[v].revenue_cents += f.revenue_cents
+  })
+  return Object.entries(m)
+    .sort((a, b) => b[1].item_count - a[1].item_count)
+    .map(([label, v]) => ({ label, ...v }))
+}
+
+function invAggByGenre(facts: InventoryFlatFact[]): InvByDim[] {
+  const m: Record<string, { item_count: number; times_sold: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    const genres = (f.genres ?? '').split(',').map(g => g.trim()).filter(Boolean)
+    genres.forEach(g => {
+      if (!m[g]) m[g] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
+      m[g].item_count++
+      m[g].times_sold    += f.times_sold
+      m[g].revenue_cents += f.revenue_cents
+    })
+  })
+  return Object.entries(m)
+    .sort((a, b) => b[1].item_count - a[1].item_count)
+    .slice(0, 20)
+    .map(([label, v]) => ({ label, ...v }))
+}
+
+function invAggByDecade(facts: InventoryFlatFact[]): InvByDim[] {
+  const m: Record<number, { item_count: number; times_sold: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    if (!f.release_year) return
+    const dec = Math.floor(f.release_year / 10) * 10
+    if (!m[dec]) m[dec] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
+    m[dec].item_count++
+    m[dec].times_sold    += f.times_sold
+    m[dec].revenue_cents += f.revenue_cents
+  })
+  return Object.entries(m)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([dec, v]) => ({ label: `${dec}s`, item_count: v.item_count, times_sold: v.times_sold, revenue_cents: v.revenue_cents }))
+}
+
+function invAggByYear(facts: InventoryFlatFact[]): (InvByDim & { year: number })[] {
+  const m: Record<number, { item_count: number; times_sold: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    if (!f.release_year) return
+    if (!m[f.release_year]) m[f.release_year] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
+    m[f.release_year].item_count++
+    m[f.release_year].times_sold    += f.times_sold
+    m[f.release_year].revenue_cents += f.revenue_cents
+  })
+  return Object.entries(m)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([yr, v]) => ({ year: Number(yr), label: yr, ...v }))
+}
+
+// Catalog growth: items added per month from created_at
+function invGrowthByMonth(facts: InventoryFlatFact[]): { month: string; count: number }[] {
+  const m: Record<string, number> = {}
+  facts.forEach(f => {
+    if (!f.created_at) return
+    const mo = f.created_at.slice(0, 7) // 'YYYY-MM'
+    m[mo] = (m[mo] ?? 0) + 1
+  })
+  return Object.entries(m)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([month, count]) => ({ month, count }))
+}
+
+function InventoryPanel({ kpis, flatFacts }: {
+  kpis: InventoryKpis | null
+  flatFacts: InventoryFlatFact[]
+}) {
+  const [filterFormat,  setFilterFormat]  = useState<string | null>(null)
+  const [filterCond,    setFilterCond]    = useState<string | null>(null)
+  const [filterType,    setFilterType]    = useState<string | null>(null)
+  const [filterTier,    setFilterTier]    = useState<string | null>(null)
+  const [filterGenre,   setFilterGenre]   = useState<string | null>(null)
+  const [filterDecade,  setFilterDecade]  = useState<number | null>(null)
+  const [filterYear,    setFilterYear]    = useState<number | null>(null)
+
+  const hasFilter = !!(filterFormat || filterCond || filterType || filterTier || filterGenre || filterDecade != null || filterYear)
+  const invF: InvFilters = {
+    format: filterFormat, condition: filterCond, item_type: filterType, tier: filterTier,
+    genre: filterGenre, decade: filterDecade, release_year: filterYear
+  }
+
+  // Dropdown option lists
+  const allFormats    = useMemo(() => [...new Set(flatFacts.map(f => f.format))].sort(), [flatFacts])
+  const allConditions = useMemo(() => [...new Set(flatFacts.map(f => f.condition))].sort(), [flatFacts])
+  const allTiers      = useMemo(() => ['Hot', 'Selling', 'Zero Sales'], [])
+  const allGenres     = useMemo(() => {
+    const s = new Set<string>()
+    flatFacts.forEach(f => { if (f.genres) f.genres.split(',').map(g => g.trim()).filter(Boolean).forEach(g => s.add(g)) })
+    return [...s].sort()
+  }, [flatFacts])
+
+  // Chart data (always from flat facts, each chart excludes its own dimension)
+  const fmtData    = invAggBy(applyInvFilters(flatFacts, invF, 'format'),    'format')
+  const condData   = invAggBy(applyInvFilters(flatFacts, invF, 'condition'), 'condition')
+  const typeData   = invAggBy(applyInvFilters(flatFacts, invF, 'item_type'), 'item_type')
+  const tierData   = invAggBy(applyInvFilters(flatFacts, invF, 'tier'),      'performance_tier')
+  const genreData  = invAggByGenre(applyInvFilters(flatFacts, invF, 'genre'))
+  const decadeData = invAggByDecade(applyInvFilters(flatFacts, invF, 'decade'))
+  const yearData   = invAggByYear(applyInvFilters(flatFacts, invF, 'release_year'))
+  const growthData = useMemo(() => invGrowthByMonth(flatFacts), [flatFacts])
+
+  // Chart maxes
+  const maxFmt     = Math.max(...fmtData.map(d => d.item_count), 1)
+  const maxFmtSold = Math.max(...fmtData.map(d => d.times_sold), 1)
+  const maxCond    = Math.max(...condData.map(d => d.item_count), 1)
+  const maxCondS   = Math.max(...condData.map(d => d.times_sold), 1)
+  const maxType    = Math.max(...typeData.map(d => d.item_count), 1)
+  const maxTypeS   = Math.max(...typeData.map(d => d.times_sold), 1)
+  const maxTier    = Math.max(...tierData.map(d => d.item_count), 1)
+  const maxGenre   = Math.max(...genreData.map(d => d.item_count), 1)
+  const maxGenreS  = Math.max(...genreData.map(d => d.times_sold), 1)
+  const maxDecade  = Math.max(...decadeData.map(d => d.item_count), 1)
+  const maxDecadeS = Math.max(...decadeData.map(d => d.times_sold), 1)
+  const maxYear    = Math.max(...yearData.map(d => d.item_count), 1)
+  const maxGrowth  = Math.max(...growthData.map(d => d.count), 1)
+
+  // Filtered KPI totals
+  const filteredFacts = hasFilter ? applyInvFilters(flatFacts, invF) : null
+  const filteredCount = filteredFacts?.length ?? null
+
+  // Live KPI values
+  const kpiTotal    = filteredCount != null ? filteredCount.toLocaleString() : (kpis?.total_items?.toLocaleString() ?? '—')
+  const kpiNamed    = filteredCount != null ? filteredFacts!.filter(f => f.item_type === 'Named Release').length.toLocaleString()
+                                            : (kpis?.named_releases?.toLocaleString() ?? '—')
+  const kpiUnsold   = filteredCount != null ? filteredFacts!.filter(f => f.times_sold === 0).length.toLocaleString()
+                                            : (kpis?.zero_sales_items?.toLocaleString() ?? '—')
+  const kpiEnriched = kpis?.enriched_items?.toLocaleString() ?? '—'
+
+  const invSelectStyle: React.CSSProperties = {
+    background: '#161616', border: '1px solid #2a2a2a', color: '#ccc',
+    padding: '5px 10px', borderRadius: 8, fontSize: 12, cursor: 'pointer', outline: 'none'
+  }
+
+  function clearAll() {
+    setFilterFormat(null); setFilterCond(null); setFilterType(null); setFilterTier(null)
+    setFilterGenre(null); setFilterDecade(null); setFilterYear(null)
+  }
+
+  // Tier colors
+  const tierColor = (t: string) => t === 'Hot' ? '#ff6b35' : t === 'Selling' ? BLUE : '#555'
+
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* ── Sub-tab nav ──────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 border-b pb-3" style={{ borderColor: '#1e1e1e' }}>
+        <button className="px-4 py-1.5 text-sm font-semibold rounded-lg" style={{ background: '#ff6b35', color: '#fff' }}>
+          📦 Inventory
+        </button>
+      </div>
+
+      {/* ── Filter dropdowns ─────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 py-1">
+        <select style={invSelectStyle} value={filterFormat ?? ''} onChange={e => setFilterFormat(e.target.value || null)}>
+          <option value="">Format: All</option>
+          {allFormats.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <select style={invSelectStyle} value={filterCond ?? ''} onChange={e => setFilterCond(e.target.value || null)}>
+          <option value="">Condition: All</option>
+          {allConditions.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select style={invSelectStyle} value={filterType ?? ''} onChange={e => setFilterType(e.target.value || null)}>
+          <option value="">Type: All</option>
+          <option value="Named Release">Named Release</option>
+          <option value="Generic Stock">Generic Stock</option>
+        </select>
+        <select style={invSelectStyle} value={filterTier ?? ''} onChange={e => setFilterTier(e.target.value || null)}>
+          <option value="">Performance: All</option>
+          {allTiers.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select style={invSelectStyle} value={filterGenre ?? ''} onChange={e => setFilterGenre(e.target.value || null)}>
+          <option value="">Genre: All</option>
+          {allGenres.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+        {hasFilter && (
+          <>
+            <span className="text-xs px-3 py-1 rounded-lg" style={{ color: '#888', background: '#161616', border: '1px solid #222' }}>
+              {filteredCount?.toLocaleString() ?? '—'} items
+            </span>
+            <button onClick={clearAll} className="text-xs px-3 py-1 rounded-lg hover:opacity-80"
+              style={{ color: ORANGE, background: '#1a0a00', border: `1px solid ${ORANGE}33` }}>
+              ✕ Clear All
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Year/decade chips from chart clicks */}
+      {(filterYear || filterDecade != null) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {filterYear && (
+            <button onClick={() => setFilterYear(null)} className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
+              style={{ background: '#0a1a2a', color: BLUE, border: `1px solid ${BLUE}44` }}>
+              Year: {filterYear} ✕
+            </button>
+          )}
+          {filterDecade != null && (
+            <button onClick={() => setFilterDecade(null)} className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
+              style={{ background: '#0a1a2a', color: BLUE, border: `1px solid ${BLUE}44` }}>
+              Decade: {filterDecade}s ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Row 1: KPI cards + Catalog Growth ──────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* KPI stack */}
+        <div className="flex flex-col gap-3">
+          {[
+            { label: 'Total Items',     value: kpiTotal,    muted: false },
+            { label: 'Named Releases',  value: kpiNamed,    muted: false },
+            { label: 'Zero Sales',      value: kpiUnsold,   muted: false },
+            { label: 'Enriched Items',  value: kpiEnriched, muted: hasFilter },
+          ].map(({ label, value, muted }) => (
+            <div key={label} className="rounded-xl border flex flex-col items-center justify-center py-3 gap-1"
+              style={{ background: '#0d0d0d', borderColor: '#1e1e1e' }}>
+              <span className="text-xl font-bold" style={{ color: muted ? '#555' : '#fff' }}>{value}</span>
+              <span className="text-xs" style={{ color: '#555' }}>{label}{muted ? ' (global)' : ''}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Catalog Growth by Month */}
+        <div className="lg:col-span-2">
+          <ChartCard title="Catalog Growth" subtitle="items added to Square catalog by month">
+            {growthData.length > 0 ? (
+              <div className="flex flex-col gap-1">
+                <svg viewBox={`0 0 ${growthData.length * 18} 80`} className="w-full" style={{ height: 100 }} preserveAspectRatio="none">
+                  {growthData.map((d, i) => {
+                    const barH = (d.count / maxGrowth) * 70
+                    return (
+                      <rect key={i} x={i * 18 + 2} y={78 - barH} width={14} height={barH}
+                        fill={BLUE} opacity={0.75} rx={1}>
+                        <title>{d.month}: {d.count} items added</title>
+                      </rect>
+                    )
+                  })}
+                </svg>
+                <div className="flex justify-between px-1" style={{ fontSize: 9, color: '#444' }}>
+                  {growthData.filter((_, i) => i % Math.max(Math.floor(growthData.length / 8), 1) === 0 || i === growthData.length - 1)
+                    .map(d => <span key={d.month}>{d.month.slice(0, 7)}</span>)}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-center py-8" style={{ color: '#444' }}>No catalog date data</div>
+            )}
+          </ChartCard>
+        </div>
+      </div>
+
+      {/* ── Row 2: Format + Condition ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ChartCard title="Inventory by Format" subtitle="click to filter · blue = catalog count · orange = times sold">
+          <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+            <span style={{ width: 120 }} />
+            <span className="flex-1 text-center">In Catalog</span>
+            <span className="flex-1 text-center">Times Sold</span>
+          </div>
+          {fmtData.map(d => (
+            <DualBarRow key={d.label} label={d.label}
+              val1={d.item_count} max1={maxFmt} val2={d.times_sold} max2={maxFmtSold}
+              color1={BLUE} color2={ORANGE}
+              fmt1={v => v.toLocaleString()} fmt2={v => v.toLocaleString()}
+              selected={filterFormat === d.label}
+              onClick={() => setFilterFormat(p => p === d.label ? null : d.label)} />
+          ))}
+        </ChartCard>
+
+        <ChartCard title="Inventory by Condition" subtitle="click to filter">
+          <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+            <span style={{ width: 120 }} />
+            <span className="flex-1 text-center">In Catalog</span>
+            <span className="flex-1 text-center">Times Sold</span>
+          </div>
+          {condData.map(d => (
+            <DualBarRow key={d.label} label={d.label}
+              val1={d.item_count} max1={maxCond} val2={d.times_sold} max2={maxCondS}
+              color1={BLUE} color2={ORANGE}
+              fmt1={v => v.toLocaleString()} fmt2={v => v.toLocaleString()}
+              selected={filterCond === d.label}
+              onClick={() => setFilterCond(p => p === d.label ? null : d.label)} />
+          ))}
+        </ChartCard>
+      </div>
+
+      {/* ── Row 3: Item Type + Performance Tier ──────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ChartCard title="Inventory by Type" subtitle="Named Releases vs. Generic Stock · click to filter">
+          <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+            <span style={{ width: 120 }} />
+            <span className="flex-1 text-center">In Catalog</span>
+            <span className="flex-1 text-center">Times Sold</span>
+          </div>
+          {typeData.map(d => (
+            <DualBarRow key={d.label} label={d.label}
+              val1={d.item_count} max1={maxType} val2={d.times_sold} max2={maxTypeS}
+              color1={BLUE} color2={ORANGE}
+              fmt1={v => v.toLocaleString()} fmt2={v => v.toLocaleString()}
+              selected={filterType === d.label}
+              onClick={() => setFilterType(p => p === d.label ? null : d.label)} />
+          ))}
+        </ChartCard>
+
+        <ChartCard title="Performance Tier" subtitle="click to filter">
+          <div className="flex flex-col gap-3 py-2">
+            {tierData.map(d => {
+              const pct = maxTier > 0 ? (d.item_count / maxTier) * 100 : 0
+              const col = tierColor(d.label)
+              const isSelected = filterTier === d.label
+              return (
+                <div key={d.label} onClick={() => setFilterTier(p => p === d.label ? null : d.label)}
+                  className="flex items-center gap-3 px-2 py-1.5 rounded cursor-pointer hover:opacity-90 transition-opacity"
+                  style={{ background: isSelected ? `${col}15` : 'transparent' }}>
+                  <span className="text-xs shrink-0" style={{ width: 80, color: col, fontWeight: 600 }}>{d.label}</span>
+                  <div className="flex-1 h-5 rounded-sm overflow-hidden" style={{ background: '#1a1a1a' }}>
+                    <div className="h-full rounded-sm transition-all" style={{ width: `${pct}%`, background: col, opacity: 0.8 }} />
+                  </div>
+                  <span className="text-xs tabular-nums shrink-0" style={{ color: '#aaa', width: 52, textAlign: 'right' }}>
+                    {d.item_count.toLocaleString()}
+                  </span>
+                  <span className="text-xs tabular-nums shrink-0" style={{ color: '#555', width: 60, textAlign: 'right' }}>
+                    {d.item_count > 0 ? `${Math.round((d.item_count / (filteredCount ?? kpis?.total_items ?? 1)) * 100)}%` : ''}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </ChartCard>
+      </div>
+
+      {/* ── Row 4: Genre + Decade ─────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ChartCard title="Catalog by Genre" subtitle="from enrichment data · click to filter">
+          <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+            <span style={{ width: 120 }} />
+            <span className="flex-1 text-center">In Catalog</span>
+            <span className="flex-1 text-center">Times Sold</span>
+          </div>
+          {genreData.length > 0 ? genreData.slice(0, 15).map(d => (
+            <DualBarRow key={d.label} label={d.label}
+              val1={d.item_count} max1={maxGenre} val2={d.times_sold} max2={maxGenreS}
+              color1={BLUE} color2={ORANGE}
+              fmt1={v => v.toLocaleString()} fmt2={v => v.toLocaleString()}
+              selected={filterGenre === d.label}
+              onClick={() => setFilterGenre(p => p === d.label ? null : d.label)} />
+          )) : (
+            <div className="text-xs text-center py-8" style={{ color: '#444' }}>
+              Enrichment still running — genre data will appear as albums are matched
+            </div>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Catalog by Decade" subtitle="from enrichment data · click to filter">
+          {decadeData.length > 0 ? (
+            <>
+              <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+                <span style={{ width: 68 }} />
+                <span className="flex-1 text-center">In Catalog</span>
+                <span className="flex-1 text-center">Times Sold</span>
+              </div>
+              {decadeData.map(d => {
+                const dec = parseInt(d.label)
+                return (
+                  <DualBarRow key={d.label} label={d.label}
+                    val1={d.item_count} max1={maxDecade} val2={d.times_sold} max2={maxDecadeS}
+                    color1={BLUE} color2={ORANGE}
+                    fmt1={v => v.toLocaleString()} fmt2={v => v.toLocaleString()}
+                    selected={filterDecade === dec}
+                    onClick={() => { setFilterDecade(p => p === dec ? null : dec); setFilterYear(null) }} />
+                )
+              })}
+            </>
+          ) : (
+            <div className="text-xs text-center py-8" style={{ color: '#444' }}>
+              Enrichment still running — decade data will appear as albums are matched
+            </div>
+          )}
+        </ChartCard>
+      </div>
+
+      {/* ── Row 5: Catalog by Release Year ───────────────────────────── */}
+      {yearData.length > 0 && (
+        <ChartCard title="Catalog by Release Year" subtitle="click year bar to filter">
+          <div className="flex flex-col gap-2">
+            <div>
+              <div className="text-xs mb-1" style={{ color: '#555' }}>In Catalog</div>
+              <svg viewBox={`0 0 ${yearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none"
+                onMouseLeave={() => setFilterYear(null)}>
+                {yearData.map((y, i) => {
+                  const barH = (y.item_count / maxYear) * 36
+                  return (
+                    <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
+                      fill={BLUE} opacity={filterYear === y.year ? 1 : 0.65} rx={1}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setFilterYear(p => p === y.year ? null : y.year)}>
+                      <title>{y.year}: {y.item_count} items</title>
+                    </rect>
+                  )
+                })}
+              </svg>
+            </div>
+            <div className="flex justify-between" style={{ fontSize: 9, color: '#444' }}>
+              {[yearData[0], ...yearData.filter((_, i) => i % Math.max(Math.floor(yearData.length / 5), 1) === 0),
+                yearData[yearData.length - 1]]
+                .filter((v, i, a) => a.findIndex(x => x.year === v.year) === i)
+                .map(y => <span key={y.year}>{y.year}</span>)}
+            </div>
+          </div>
+        </ChartCard>
+      )}
+
+    </div>
+  )
+}
+
 // ─── Instagram Panel ──────────────────────────────────────────────────────────
 
 function InstagramPanel({ account, media, demographics }: {
@@ -1350,7 +1838,7 @@ function EnrichmentPanel({ stats, sample }: {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type Tab = 'square' | 'instagram' | 'facebook' | 'tiktok' | 'catalog' | 'database' | 'db-overview' | 'enrichment'
+type Tab = 'square' | 'inventory' | 'instagram' | 'facebook' | 'tiktok' | 'catalog' | 'database' | 'db-overview' | 'enrichment'
 
 export default function DeadWaxClient({
   squareSummary, squareTopItems, recentPayments,
@@ -1360,6 +1848,7 @@ export default function DeadWaxClient({
   squareKpis, squareSalesByDate, squareSalesByFormat,
   squareSalesByCondition, squareCatalogByGenre, squareInventoryByYear,
   squareFlatFacts,
+  inventoryKpis, inventoryFlatFacts,
   userEmail,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('square')
@@ -1413,7 +1902,8 @@ export default function DeadWaxClient({
         <section>
           <div className="flex gap-2 mb-6 flex-wrap">
             <TabButton active={activeTab === 'square'}      onClick={() => setActiveTab('square')}>🛒 Square</TabButton>
-            <TabButton active={activeTab === 'catalog'}     onClick={() => setActiveTab('catalog')}>📦 Catalog</TabButton>
+            <TabButton active={activeTab === 'inventory'}   onClick={() => setActiveTab('inventory')}>📦 Inventory</TabButton>
+            <TabButton active={activeTab === 'catalog'}     onClick={() => setActiveTab('catalog')}>📋 Catalog</TabButton>
             <TabButton active={activeTab === 'instagram'}   onClick={() => setActiveTab('instagram')}>📸 Instagram</TabButton>
             <TabButton active={activeTab === 'facebook'}    onClick={() => setActiveTab('facebook')}>👥 Facebook</TabButton>
             <TabButton active={activeTab === 'tiktok'}      onClick={() => setActiveTab('tiktok')}>🎵 TikTok</TabButton>
@@ -1432,6 +1922,9 @@ export default function DeadWaxClient({
               inventoryByYear={squareInventoryByYear}
               flatFacts={squareFlatFacts}
             />
+          )}
+          {activeTab === 'inventory' && (
+            <InventoryPanel kpis={inventoryKpis} flatFacts={inventoryFlatFacts} />
           )}
           {activeTab === 'catalog' && (
             catalogOverview
