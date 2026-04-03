@@ -224,10 +224,27 @@ function fmtDateShort(iso: string) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function DualBarRow({ label, val1, max1, val2, max2, fmt1, fmt2, color1 = ORANGE, color2 = PINK, selected, onClick }: {
+// ── Viz-in-tooltip types ──────────────────────────────────────────────────────
+
+interface HoverState {
+  label: string
+  metricLabel: string   // "Times Sold" | "Sales"
+  metricValue: string   // formatted display value
+  isRevenue: boolean
+  dimType: 'format' | 'condition' | 'genre' | 'year' | 'decade'
+  dimValue: string | number
+  mouseX: number
+  mouseY: number
+}
+
+function DualBarRow({ label, val1, max1, val2, max2, fmt1, fmt2, color1 = ORANGE, color2 = PINK,
+  selected, onClick, onHoverBar1, onHoverBar2, onLeaveBar }: {
   label: string; val1: number; max1: number; val2: number; max2: number
   fmt1: (v: number) => string; fmt2: (v: number) => string
   color1?: string; color2?: string; selected?: boolean; onClick?: () => void
+  onHoverBar1?: (e: React.MouseEvent) => void  // orange bar hover (Times Sold)
+  onHoverBar2?: (e: React.MouseEvent) => void  // pink bar hover (Sales)
+  onLeaveBar?: () => void
 }) {
   const pct1 = max1 > 0 ? (val1 / max1) * 100 : 0
   const pct2 = max2 > 0 ? (val2 / max2) * 100 : 0
@@ -236,14 +253,16 @@ function DualBarRow({ label, val1, max1, val2, max2, fmt1, fmt2, color1 = ORANGE
       style={{ cursor: onClick ? 'pointer' : 'default', background: selected ? 'rgba(255,107,53,0.1)' : 'transparent' }}>
       <span className="text-xs text-right shrink-0 truncate" style={{ width: 120, color: '#ccc' }} title={label}>{label}</span>
       <div className="flex items-center gap-1 flex-1">
-        <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ background: '#1a1a1a' }}>
-          <div className="h-full rounded-sm" style={{ width: `${pct1}%`, background: color1, opacity: 0.85 }} />
+        <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ background: '#1a1a1a' }}
+          onMouseMove={onHoverBar1} onMouseLeave={onLeaveBar}>
+          <div className="h-full rounded-sm" style={{ width: `${pct1}%`, background: color1, opacity: 0.85, pointerEvents: 'none' }} />
         </div>
         <span className="text-xs tabular-nums shrink-0" style={{ color: '#aaa', width: 40, textAlign: 'right' }}>{fmt1(val1)}</span>
       </div>
       <div className="flex items-center gap-1 flex-1">
-        <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ background: '#1a1a1a' }}>
-          <div className="h-full rounded-sm" style={{ width: `${pct2}%`, background: color2, opacity: 0.85 }} />
+        <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ background: '#1a1a1a' }}
+          onMouseMove={onHoverBar2} onMouseLeave={onLeaveBar}>
+          <div className="h-full rounded-sm" style={{ width: `${pct2}%`, background: color2, opacity: 0.85, pointerEvents: 'none' }} />
         </div>
         <span className="text-xs tabular-nums shrink-0" style={{ color: '#aaa', width: 52, textAlign: 'right' }}>{fmt2(val2)}</span>
       </div>
@@ -377,6 +396,62 @@ function aggByYear(facts: FlatFact[]): InventoryByYear[] {
     .map(([yr, v]) => ({ release_year: Number(yr), ...v }))
 }
 
+// ── Viz-in-tooltip component ──────────────────────────────────────────────────
+
+function VizTooltip({ state, dayData }: { state: HoverState; dayData: SalesByDate[] }) {
+  const values = dayData.map(d => state.isRevenue ? d.total_money_cents : d.order_count)
+  const maxVal  = Math.max(...values, 1)
+  const color   = state.isRevenue ? PINK : ORANGE
+
+  // clamp so tooltip doesn't run off the right edge
+  const left = typeof window !== 'undefined'
+    ? Math.min(state.mouseX + 18, window.innerWidth - 248)
+    : state.mouseX + 18
+  const top = state.mouseY - 70
+
+  return (
+    <div style={{
+      position: 'fixed', left, top, zIndex: 9999, pointerEvents: 'none',
+      background: '#181818', border: '1px solid #333', borderRadius: 10,
+      padding: '10px 12px', width: 230,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+    }}>
+      {/* Header */}
+      <div style={{ color: '#fff', fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{state.label}</div>
+      <div style={{ color, fontSize: 11, marginBottom: 8 }}>
+        {state.metricLabel}: <strong>{state.metricValue}</strong>
+      </div>
+
+      {/* Mini daily chart */}
+      <div style={{ color: '#555', fontSize: 9, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {state.isRevenue ? 'Revenue' : 'Times Sold'} by Day
+      </div>
+      {dayData.length > 0 ? (
+        <>
+          <svg viewBox={`0 0 ${dayData.length * 7} 44`} style={{ width: '100%', height: 52 }} preserveAspectRatio="none">
+            {dayData.map((d, i) => {
+              const v    = state.isRevenue ? d.total_money_cents : d.order_count
+              const barH = Math.max((v / maxVal) * 40, v > 0 ? 2 : 0)
+              return (
+                <rect key={i} x={i * 7 + 1} y={42 - barH} width={5} height={barH}
+                  fill={color} opacity={0.85} rx={1}>
+                  <title>{fmtDateShort(d.sale_date)}: {state.isRevenue ? fmtDollars(v) : v.toLocaleString()}</title>
+                </rect>
+              )
+            })}
+          </svg>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#444', marginTop: 2 }}>
+            <span>{fmtDateShort(dayData[0].sale_date)}</span>
+            <span>{fmtDateShort(dayData[dayData.length - 1].sale_date)}</span>
+          </div>
+        </>
+      ) : (
+        <div style={{ color: '#444', fontSize: 10, textAlign: 'center', padding: '8px 0' }}>No daily data available</div>
+      )}
+    </div>
+  )
+}
+
 // ── SquarePanel component ──────────────────────────────────────────────────────
 
 function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catalogByGenre, inventoryByYear, flatFacts }: {
@@ -462,6 +537,44 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
   function clearAll() {
     setFilterFormat(null); setFilterCondition(null); setFilterGenre(null)
     setFilterYear(null); setFilterDecade(null); setFilterDate(null); setFilterDateDays(0)
+  }
+
+  // ── Viz-in-tooltip state ──────────────────────────────────────────────────
+  const [hoverState, setHoverState] = useState<HoverState | null>(null)
+
+  // Tooltip mini-chart: aggregate filtered flat facts for hovered dimension by day.
+  // Deps exclude mouseX/mouseY so it only recomputes when the actual dimension changes.
+  const tooltipDayData = useMemo((): SalesByDate[] => {
+    if (!hoverState) return []
+    // Apply active filters, then further filter to hovered dimension
+    let facts = applyFilters(flatFacts, filters)
+    const { dimType, dimValue } = hoverState
+    if (dimType === 'format')    facts = facts.filter(f => f.format === dimValue)
+    if (dimType === 'condition') facts = facts.filter(f => f.condition === dimValue)
+    if (dimType === 'genre')     facts = facts.filter(f => (f.genres ?? '').split(',').map(g => g.trim()).includes(String(dimValue)))
+    if (dimType === 'year')      facts = facts.filter(f => f.release_year === Number(dimValue))
+    if (dimType === 'decade')    facts = facts.filter(f => f.release_year != null && f.release_year >= Number(dimValue) && f.release_year <= Number(dimValue) + 9)
+    return aggByDate(facts)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoverState?.dimType, hoverState?.dimValue, flatFacts,
+      filterFormat, filterCondition, filterGenre, filterYear, filterDecade, filterDate, filterDateDays])
+
+  // Helper: build the two hover handlers + leave handler for a DualBarRow dimension
+  function makeHoverHandlers(
+    label: string, timesVal: number, revenueVal: number,
+    dimType: HoverState['dimType'], dimValue: string | number
+  ) {
+    return {
+      onHoverBar1: (e: React.MouseEvent) => setHoverState({
+        label, metricLabel: 'Times Sold', metricValue: timesVal.toLocaleString(),
+        isRevenue: false, dimType, dimValue, mouseX: e.clientX, mouseY: e.clientY
+      }),
+      onHoverBar2: (e: React.MouseEvent) => setHoverState({
+        label, metricLabel: 'Sales', metricValue: fmtDollars(revenueVal),
+        isRevenue: true, dimType, dimValue, mouseX: e.clientX, mouseY: e.clientY
+      }),
+      onLeaveBar: () => setHoverState(null),
+    }
   }
 
   return (
@@ -633,7 +746,8 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
               val1={f.times_sold} max1={maxFmtSold} val2={f.revenue_cents} max2={maxFmtRev}
               fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
               selected={filterFormat === f.format}
-              onClick={() => setFilterFormat(p => p === f.format ? null : f.format)} />
+              onClick={() => setFilterFormat(p => p === f.format ? null : f.format)}
+              {...makeHoverHandlers(f.format, f.times_sold, f.revenue_cents, 'format', f.format)} />
           ))}
           {activeFormatData.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#666' }}>No sales match this filter combination</div>}
         </ChartCard>
@@ -649,7 +763,8 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
               val1={c.times_sold} max1={maxCondSold} val2={c.revenue_cents} max2={maxCondRev}
               fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
               selected={filterCondition === c.condition}
-              onClick={() => setFilterCondition(p => p === c.condition ? null : c.condition)} />
+              onClick={() => setFilterCondition(p => p === c.condition ? null : c.condition)}
+              {...makeHoverHandlers(c.condition, c.times_sold, c.revenue_cents, 'condition', c.condition)} />
           ))}
           {activeConditionData.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#666' }}>No sales match this filter combination</div>}
         </ChartCard>
@@ -668,7 +783,8 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
               val1={g.times_sold} max1={maxGenreSold} val2={g.revenue_cents} max2={maxGenreRev}
               fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
               selected={filterGenre === g.genre}
-              onClick={() => setFilterGenre(p => p === g.genre ? null : g.genre)} />
+              onClick={() => setFilterGenre(p => p === g.genre ? null : g.genre)}
+              {...makeHoverHandlers(g.genre, g.times_sold, g.revenue_cents, 'genre', g.genre)} />
           )) : hasFilter ? (
             <div className="text-xs text-center py-8" style={{ color: '#666' }}>
               No genre data matches this filter combination
@@ -685,25 +801,33 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
             <div className="flex flex-col gap-2">
               <div>
                 <div className="text-xs mb-1" style={{ color: '#555' }}>Times Sold</div>
-                <svg viewBox={`0 0 ${activeYearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
+                <svg viewBox={`0 0 ${activeYearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none"
+                  onMouseLeave={() => setHoverState(null)}>
                   {activeYearData.map((y, i) => {
                     const barH = (y.times_sold / maxYearSold) * 36
                     return <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
                       fill={ORANGE} opacity={filterYear === y.release_year ? 1 : 0.7} rx={1}
                       style={{ cursor: 'pointer' }}
-                      onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)} />
+                      onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)}
+                      onMouseMove={e => setHoverState({ label: String(y.release_year), metricLabel: 'Times Sold',
+                        metricValue: y.times_sold.toLocaleString(), isRevenue: false,
+                        dimType: 'year', dimValue: y.release_year, mouseX: e.clientX, mouseY: e.clientY })} />
                   })}
                 </svg>
               </div>
               <div>
                 <div className="text-xs mb-1" style={{ color: '#555' }}>Sales</div>
-                <svg viewBox={`0 0 ${activeYearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
+                <svg viewBox={`0 0 ${activeYearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none"
+                  onMouseLeave={() => setHoverState(null)}>
                   {activeYearData.map((y, i) => {
                     const barH = (y.revenue_cents / maxYearRev) * 36
                     return <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
                       fill={PINK} opacity={filterYear === y.release_year ? 1 : 0.7} rx={1}
                       style={{ cursor: 'pointer' }}
-                      onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)} />
+                      onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)}
+                      onMouseMove={e => setHoverState({ label: String(y.release_year), metricLabel: 'Sales',
+                        metricValue: fmtDollars(y.revenue_cents), isRevenue: true,
+                        dimType: 'year', dimValue: y.release_year, mouseX: e.clientX, mouseY: e.clientY })} />
                   })}
                 </svg>
               </div>
@@ -735,7 +859,8 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
                 val1={d.times_sold} max1={maxDecadeSold} val2={d.revenue_cents} max2={maxDecadeRev}
                 fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
                 selected={filterDecade === d.decade}
-                onClick={() => { setFilterDecade(p => p === d.decade ? null : d.decade); setFilterYear(null) }} />
+                onClick={() => { setFilterDecade(p => p === d.decade ? null : d.decade); setFilterYear(null) }}
+                {...makeHoverHandlers(d.label, d.times_sold, d.revenue_cents, 'decade', d.decade)} />
             ))}
           </>
         ) : (
@@ -744,6 +869,9 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
           </div>
         )}
       </ChartCard>
+
+      {/* ── Viz-in-tooltip (portal to body coords) ──────────────────────── */}
+      {hoverState && <VizTooltip state={hoverState} dayData={tooltipDayData} />}
 
     </div>
   )
