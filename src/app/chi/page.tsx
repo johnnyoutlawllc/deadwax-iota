@@ -40,6 +40,7 @@ export default async function ChiPage() {
     { data: squareSalesByCondition },
     { data: squareCatalogByGenre },
     { data: squareInventoryByYear },
+    { data: squareFlatFacts },
   ] = await Promise.all([
     supabase.rpc('get_square_summary'),
 
@@ -79,6 +80,7 @@ export default async function ChiPage() {
     supabase.rpc('get_square_sales_by_condition'),
     supabase.rpc('get_square_catalog_by_genre'),
     supabase.rpc('get_square_inventory_by_year'),
+    supabase.rpc('get_square_flat_facts'),
   ])
 
   return (
@@ -101,6 +103,7 @@ export default async function ChiPage() {
       squareSalesByCondition={squareSalesByCondition ?? []}
       squareCatalogByGenre={squareCatalogByGenre ?? []}
       squareInventoryByYear={squareInventoryByYear ?? []}
+      squareFlatFacts={squareFlatFacts ?? []}
       userEmail={user.email ?? ''}
     />
   )

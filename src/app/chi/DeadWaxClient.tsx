@@ -139,6 +139,7 @@ interface Props {
   squareSalesByCondition: SalesByCondition[]
   squareCatalogByGenre: CatalogByGenre[]
   squareInventoryByYear: InventoryByYear[]
+  squareFlatFacts: FlatFact[]
   userEmail: string
 }
 
@@ -223,7 +224,6 @@ function fmtDateShort(iso: string) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-/** Dual horizontal bar row — left bar = color1, right bar = color2 */
 function DualBarRow({ label, val1, max1, val2, max2, fmt1, fmt2, color1 = ORANGE, color2 = PINK, selected, onClick }: {
   label: string; val1: number; max1: number; val2: number; max2: number
   fmt1: (v: number) => string; fmt2: (v: number) => string
@@ -232,35 +232,20 @@ function DualBarRow({ label, val1, max1, val2, max2, fmt1, fmt2, color1 = ORANGE
   const pct1 = max1 > 0 ? (val1 / max1) * 100 : 0
   const pct2 = max2 > 0 ? (val2 / max2) * 100 : 0
   return (
-    <div
-      onClick={onClick}
-      className="flex items-center gap-2 py-1 px-2 rounded transition-colors"
-      style={{
-        cursor: onClick ? 'pointer' : 'default',
-        background: selected ? 'rgba(255,107,53,0.08)' : 'transparent',
-      }}
-    >
-      {/* Label */}
-      <span className="text-xs text-right shrink-0 truncate" style={{ width: 120, color: '#ccc' }} title={label}>
-        {label}
-      </span>
-      {/* Bar 1 */}
+    <div onClick={onClick} className="flex items-center gap-2 py-1 px-2 rounded transition-colors"
+      style={{ cursor: onClick ? 'pointer' : 'default', background: selected ? 'rgba(255,107,53,0.1)' : 'transparent' }}>
+      <span className="text-xs text-right shrink-0 truncate" style={{ width: 120, color: '#ccc' }} title={label}>{label}</span>
       <div className="flex items-center gap-1 flex-1">
         <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ background: '#1a1a1a' }}>
           <div className="h-full rounded-sm" style={{ width: `${pct1}%`, background: color1, opacity: 0.85 }} />
         </div>
-        <span className="text-xs tabular-nums shrink-0" style={{ color: '#aaa', width: 40, textAlign: 'right' }}>
-          {fmt1(val1)}
-        </span>
+        <span className="text-xs tabular-nums shrink-0" style={{ color: '#aaa', width: 40, textAlign: 'right' }}>{fmt1(val1)}</span>
       </div>
-      {/* Bar 2 */}
       <div className="flex items-center gap-1 flex-1">
         <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ background: '#1a1a1a' }}>
           <div className="h-full rounded-sm" style={{ width: `${pct2}%`, background: color2, opacity: 0.85 }} />
         </div>
-        <span className="text-xs tabular-nums shrink-0" style={{ color: '#aaa', width: 52, textAlign: 'right' }}>
-          {fmt2(val2)}
-        </span>
+        <span className="text-xs tabular-nums shrink-0" style={{ color: '#aaa', width: 52, textAlign: 'right' }}>{fmt2(val2)}</span>
       </div>
     </div>
   )
@@ -278,44 +263,186 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle?: st
   )
 }
 
-function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catalogByGenre, inventoryByYear }: {
+// ── Client-side cross-filter aggregation ──────────────────────────────────────
+
+interface FlatFact {
+  order_id: string
+  sale_date: string
+  format: string
+  condition: string
+  genres: string | null
+  release_year: number | null
+  revenue_cents: number
+}
+
+function applyFilters(
+  facts: FlatFact[],
+  filters: { format: string | null; condition: string | null; genre: string | null; year: number | null },
+  exclude: 'format' | 'condition' | 'genre' | 'year' | null = null
+) {
+  return facts.filter(f => {
+    if (exclude !== 'format'    && filters.format    && f.format !== filters.format) return false
+    if (exclude !== 'condition' && filters.condition && f.condition !== filters.condition) return false
+    if (exclude !== 'year'      && filters.year      && f.release_year !== filters.year) return false
+    if (exclude !== 'genre'     && filters.genre) {
+      const genreList = (f.genres ?? '').split(',').map(g => g.trim())
+      if (!genreList.includes(filters.genre!)) return false
+    }
+    return true
+  })
+}
+
+function aggByDate(facts: FlatFact[]): SalesByDate[] {
+  const m: Record<string, { order_count: number; total_money_cents: number }> = {}
+  facts.forEach(f => {
+    if (!m[f.sale_date]) m[f.sale_date] = { order_count: 0, total_money_cents: 0 }
+    m[f.sale_date].order_count++
+    m[f.sale_date].total_money_cents += f.revenue_cents
+  })
+  return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([sale_date, v]) => ({ sale_date, ...v }))
+}
+
+function aggByFormat(facts: FlatFact[]): SalesByFormat[] {
+  const m: Record<string, { times_sold: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    if (!m[f.format]) m[f.format] = { times_sold: 0, revenue_cents: 0 }
+    m[f.format].times_sold++
+    m[f.format].revenue_cents += f.revenue_cents
+  })
+  return Object.entries(m).sort((a, b) => b[1].times_sold - a[1].times_sold)
+    .map(([format, v]) => ({ format, item_count: 0, ...v }))
+}
+
+function aggByCondition(facts: FlatFact[]): SalesByCondition[] {
+  const m: Record<string, { times_sold: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    if (!m[f.condition]) m[f.condition] = { times_sold: 0, revenue_cents: 0 }
+    m[f.condition].times_sold++
+    m[f.condition].revenue_cents += f.revenue_cents
+  })
+  return Object.entries(m).sort((a, b) => b[1].times_sold - a[1].times_sold)
+    .map(([condition, v]) => ({ condition, ...v }))
+}
+
+function aggByGenre(facts: FlatFact[]): CatalogByGenre[] {
+  const m: Record<string, { inventory_count: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    const genres = (f.genres ?? '').split(',').map(g => g.trim()).filter(Boolean)
+    genres.forEach(genre => {
+      if (!m[genre]) m[genre] = { inventory_count: 0, revenue_cents: 0 }
+      m[genre].inventory_count++
+      m[genre].revenue_cents += f.revenue_cents
+    })
+  })
+  return Object.entries(m).sort((a, b) => b[1].inventory_count - a[1].inventory_count)
+    .slice(0, 20).map(([genre, v]) => ({ genre, ...v }))
+}
+
+function aggByYear(facts: FlatFact[]): InventoryByYear[] {
+  const m: Record<number, { inventory_count: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    if (!f.release_year) return
+    if (!m[f.release_year]) m[f.release_year] = { inventory_count: 0, revenue_cents: 0 }
+    m[f.release_year].inventory_count++
+    m[f.release_year].revenue_cents += f.revenue_cents
+  })
+  return Object.entries(m).sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([yr, v]) => ({ release_year: Number(yr), ...v }))
+}
+
+// ── SquarePanel component ──────────────────────────────────────────────────────
+
+function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catalogByGenre, inventoryByYear, flatFacts }: {
   kpis: SquareKpis | null
   salesByDate: SalesByDate[]
   salesByFormat: SalesByFormat[]
   salesByCondition: SalesByCondition[]
   catalogByGenre: CatalogByGenre[]
   inventoryByYear: InventoryByYear[]
+  flatFacts: FlatFact[]
 }) {
   const [filterFormat, setFilterFormat]       = useState<string | null>(null)
   const [filterCondition, setFilterCondition] = useState<string | null>(null)
   const [filterGenre, setFilterGenre]         = useState<string | null>(null)
   const [filterYear, setFilterYear]           = useState<number | null>(null)
 
-  // ── Sales by Date mini chart ────────────────────────────────────────────────
-  const maxOrders = Math.max(...salesByDate.map(d => d.order_count), 1)
-  const maxMoney  = Math.max(...salesByDate.map(d => d.total_money_cents), 1)
+  const hasFilter = !!(filterFormat || filterCondition || filterGenre || filterYear)
+  const filters   = { format: filterFormat, condition: filterCondition, genre: filterGenre, year: filterYear }
 
-  // Only show last 30 days in the chart to keep it readable
-  const dateSlice = salesByDate.slice(-30)
+  // When filters active, re-derive each chart from flat facts,
+  // excluding each chart's own dimension so it shows full range with cross-filter applied
+  const activeDateData  = hasFilter ? aggByDate(applyFilters(flatFacts, filters))               : salesByDate
+  const activeFormatData     = hasFilter ? aggByFormat(applyFilters(flatFacts, filters, 'format'))       : salesByFormat
+  const activeConditionData  = hasFilter ? aggByCondition(applyFilters(flatFacts, filters, 'condition')) : salesByCondition
+  const activeGenreData      = hasFilter ? aggByGenre(applyFilters(flatFacts, filters, 'genre'))         : catalogByGenre
+  const activeYearData       = hasFilter ? aggByYear(applyFilters(flatFacts, filters, 'year'))           : inventoryByYear
 
-  // ── Format bars ─────────────────────────────────────────────────────────────
-  const maxFmtSold = Math.max(...salesByFormat.map(f => f.times_sold), 1)
-  const maxFmtRev  = Math.max(...salesByFormat.map(f => f.revenue_cents), 1)
+  // Chart maxes
+  const dateSlice    = activeDateData.slice(-30)
+  const maxOrders    = Math.max(...dateSlice.map(d => d.order_count), 1)
+  const maxMoney     = Math.max(...dateSlice.map(d => d.total_money_cents), 1)
+  const maxFmtSold   = Math.max(...activeFormatData.map(f => f.times_sold), 1)
+  const maxFmtRev    = Math.max(...activeFormatData.map(f => f.revenue_cents), 1)
+  const maxCondSold  = Math.max(...activeConditionData.map(c => c.times_sold), 1)
+  const maxCondRev   = Math.max(...activeConditionData.map(c => c.revenue_cents), 1)
+  const maxGenreCount = Math.max(...activeGenreData.map(g => g.inventory_count), 1)
+  const maxGenreRev   = Math.max(...activeGenreData.map(g => g.revenue_cents), 1)
+  const maxYearCount  = Math.max(...activeYearData.map(y => y.inventory_count), 1)
+  const maxYearRev    = Math.max(...activeYearData.map(y => y.revenue_cents), 1)
 
-  // ── Condition bars ──────────────────────────────────────────────────────────
-  const maxCondSold = Math.max(...salesByCondition.map(c => c.times_sold), 1)
-  const maxCondRev  = Math.max(...salesByCondition.map(c => c.revenue_cents), 1)
+  // Filtered KPI totals
+  const filteredFacts = hasFilter ? applyFilters(flatFacts, filters) : null
+  const filteredRevenue = filteredFacts ? filteredFacts.reduce((s, f) => s + f.revenue_cents, 0) : null
 
-  // ── Genre bars ──────────────────────────────────────────────────────────────
-  const maxGenreCount = Math.max(...catalogByGenre.map(g => g.inventory_count), 1)
-  const maxGenreRev   = Math.max(...catalogByGenre.map(g => g.revenue_cents), 1)
-
-  // ── Year chart ──────────────────────────────────────────────────────────────
-  const maxYearCount = Math.max(...inventoryByYear.map(y => y.inventory_count), 1)
-  const maxYearRev   = Math.max(...inventoryByYear.map(y => y.revenue_cents), 1)
+  function clearAll() { setFilterFormat(null); setFilterCondition(null); setFilterGenre(null); setFilterYear(null) }
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* ── Active filter bar — TOP ──────────────────────────────────────────── */}
+      {hasFilter && (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2 rounded-lg border text-xs"
+          style={{ background: '#1a1a0a', borderColor: '#3a3a1a', color: '#aaa' }}>
+          <span style={{ color: ORANGE, fontWeight: 600 }}>Filters:</span>
+          {filterFormat    && (
+            <button onClick={() => setFilterFormat(null)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
+              style={{ background: '#2a1a0a', color: ORANGE }}>
+              Format: {filterFormat} <span style={{ fontSize: 10 }}>✕</span>
+            </button>
+          )}
+          {filterCondition && (
+            <button onClick={() => setFilterCondition(null)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
+              style={{ background: '#2a1a0a', color: ORANGE }}>
+              Condition: {filterCondition} <span style={{ fontSize: 10 }}>✕</span>
+            </button>
+          )}
+          {filterGenre     && (
+            <button onClick={() => setFilterGenre(null)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
+              style={{ background: '#2a1a0a', color: ORANGE }}>
+              Genre: {filterGenre} <span style={{ fontSize: 10 }}>✕</span>
+            </button>
+          )}
+          {filterYear      && (
+            <button onClick={() => setFilterYear(null)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
+              style={{ background: '#2a1a0a', color: ORANGE }}>
+              Year: {filterYear} <span style={{ fontSize: 10 }}>✕</span>
+            </button>
+          )}
+          {filteredRevenue !== null && (
+            <span className="ml-2" style={{ color: '#666' }}>
+              {filteredFacts!.length.toLocaleString()} orders · {fmtDollars(filteredRevenue)} revenue
+            </span>
+          )}
+          <button onClick={clearAll} className="ml-auto hover:opacity-80 text-xs" style={{ color: '#555' }}>
+            Clear all
+          </button>
+        </div>
+      )}
 
       {/* ── Row 1: KPI cards + Sales by Date ─────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -323,8 +450,8 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
         {/* KPI stack */}
         <div className="flex flex-col gap-3">
           {[
-            { label: 'Customer Count',    value: kpis?.customer_count?.toLocaleString()     ?? '—' },
-            { label: 'Unique Items Sold', value: kpis?.unique_items_sold?.toLocaleString()  ?? '—' },
+            { label: 'Customer Count',    value: kpis?.customer_count?.toLocaleString() ?? '—' },
+            { label: 'Unique Items Sold', value: kpis?.unique_items_sold?.toLocaleString() ?? '—' },
             { label: 'Total Sales',       value: kpis ? fmtDollars(kpis.total_sales_cents) : '—' },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-xl border flex flex-col items-center justify-center py-4 gap-1"
@@ -342,36 +469,19 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
               <div className="text-xs text-center py-6" style={{ color: '#444' }}>No data</div>
             ) : (
               <div className="flex flex-col gap-1">
-                {/* Dual-axis bar chart using SVG */}
                 <svg viewBox={`0 0 ${dateSlice.length * 18} 80`} className="w-full" style={{ height: 100 }} preserveAspectRatio="none">
-                  {/* Revenue line */}
-                  <polyline
-                    fill="none"
-                    stroke={PINK}
-                    strokeWidth="1.5"
-                    points={dateSlice.map((d, i) => {
-                      const x = i * 18 + 9
-                      const y = 76 - (d.total_money_cents / maxMoney) * 70
-                      return `${x},${y}`
-                    }).join(' ')}
-                  />
-                  {/* Order count bars */}
+                  <polyline fill="none" stroke={PINK} strokeWidth="1.5"
+                    points={dateSlice.map((d, i) => `${i * 18 + 9},${76 - (d.total_money_cents / maxMoney) * 70}`).join(' ')} />
                   {dateSlice.map((d, i) => {
                     const barH = (d.order_count / maxOrders) * 60
-                    const x = i * 18 + 2
-                    return (
-                      <rect key={i} x={x} y={76 - barH} width={14} height={barH}
-                        fill={ORANGE} opacity={0.75} rx={1} />
-                    )
+                    return <rect key={i} x={i * 18 + 2} y={76 - barH} width={14} height={barH} fill={ORANGE} opacity={0.75} rx={1} />
                   })}
                 </svg>
-                {/* X-axis labels — show every ~7th */}
                 <div className="flex justify-between px-1" style={{ fontSize: 9, color: '#444' }}>
                   {dateSlice.filter((_, i) => i % 7 === 0 || i === dateSlice.length - 1).map(d => (
                     <span key={d.sale_date}>{fmtDateShort(d.sale_date)}</span>
                   ))}
                 </div>
-                {/* Legend */}
                 <div className="flex gap-4 justify-end mt-1" style={{ fontSize: 10, color: '#666' }}>
                   <span><span style={{ color: ORANGE }}>■</span> Order Count</span>
                   <span><span style={{ color: PINK }}>─</span> Revenue</span>
@@ -384,27 +494,20 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
 
       {/* ── Row 2: Sales by Format + Sales by Condition ───────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
         <ChartCard title="Sales by Format" subtitle="click to filter">
-          {/* Column headers */}
           <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
             <span style={{ width: 120 }} />
             <span className="flex-1 text-center">Times Sold</span>
             <span className="flex-1 text-center">Revenue Dollars</span>
           </div>
-          {salesByFormat.map(f => (
-            <DualBarRow
-              key={f.format}
-              label={f.format}
-              val1={f.times_sold} max1={maxFmtSold}
-              val2={f.revenue_cents} max2={maxFmtRev}
-              fmt1={v => v.toLocaleString()}
-              fmt2={v => fmtDollars(v)}
+          {activeFormatData.map(f => (
+            <DualBarRow key={f.format} label={f.format}
+              val1={f.times_sold} max1={maxFmtSold} val2={f.revenue_cents} max2={maxFmtRev}
+              fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
               selected={filterFormat === f.format}
-              onClick={() => setFilterFormat(p => p === f.format ? null : f.format)}
-            />
+              onClick={() => setFilterFormat(p => p === f.format ? null : f.format)} />
           ))}
-          {salesByFormat.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#444' }}>No data</div>}
+          {activeFormatData.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#444' }}>No data</div>}
         </ChartCard>
 
         <ChartCard title="Sales by Condition" subtitle="click to filter">
@@ -413,42 +516,31 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
             <span className="flex-1 text-center">Times Sold</span>
             <span className="flex-1 text-center">Revenue Dollars</span>
           </div>
-          {salesByCondition.map(c => (
-            <DualBarRow
-              key={c.condition}
-              label={c.condition}
-              val1={c.times_sold} max1={maxCondSold}
-              val2={c.revenue_cents} max2={maxCondRev}
-              fmt1={v => v.toLocaleString()}
-              fmt2={v => fmtDollars(v)}
+          {activeConditionData.map(c => (
+            <DualBarRow key={c.condition} label={c.condition}
+              val1={c.times_sold} max1={maxCondSold} val2={c.revenue_cents} max2={maxCondRev}
+              fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
               selected={filterCondition === c.condition}
-              onClick={() => setFilterCondition(p => p === c.condition ? null : c.condition)}
-            />
+              onClick={() => setFilterCondition(p => p === c.condition ? null : c.condition)} />
           ))}
-          {salesByCondition.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#444' }}>No data</div>}
+          {activeConditionData.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#444' }}>No data</div>}
         </ChartCard>
       </div>
 
       {/* ── Row 3: Catalog by Genre + Inventory by Release Year ───────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
         <ChartCard title="Catalog by Genre" subtitle="click to filter">
           <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
             <span style={{ width: 120 }} />
             <span className="flex-1 text-center">Inventory Count</span>
             <span className="flex-1 text-center">Sales</span>
           </div>
-          {catalogByGenre.length > 0 ? catalogByGenre.slice(0, 15).map(g => (
-            <DualBarRow
-              key={g.genre}
-              label={g.genre}
-              val1={g.inventory_count} max1={maxGenreCount}
-              val2={g.revenue_cents} max2={maxGenreRev}
-              fmt1={v => v.toLocaleString()}
-              fmt2={v => fmtDollars(v)}
+          {activeGenreData.length > 0 ? activeGenreData.slice(0, 15).map(g => (
+            <DualBarRow key={g.genre} label={g.genre}
+              val1={g.inventory_count} max1={maxGenreCount} val2={g.revenue_cents} max2={maxGenreRev}
+              fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
               selected={filterGenre === g.genre}
-              onClick={() => setFilterGenre(p => p === g.genre ? null : g.genre)}
-            />
+              onClick={() => setFilterGenre(p => p === g.genre ? null : g.genre)} />
           )) : (
             <div className="text-xs text-center py-8" style={{ color: '#444' }}>
               Enrichment still running — genre data will appear as albums are matched
@@ -457,54 +549,37 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
         </ChartCard>
 
         <ChartCard title="Inventory by Release Year" subtitle="click to filter">
-          {inventoryByYear.length > 0 ? (
+          {activeYearData.length > 0 ? (
             <div className="flex flex-col gap-2">
-              {/* Inventory Count mini bar chart */}
               <div>
                 <div className="text-xs mb-1" style={{ color: '#555' }}>Inventory Count</div>
-                <svg viewBox={`0 0 ${inventoryByYear.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
-                  {inventoryByYear.map((y, i) => {
+                <svg viewBox={`0 0 ${activeYearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
+                  {activeYearData.map((y, i) => {
                     const barH = (y.inventory_count / maxYearCount) * 36
-                    return (
-                      <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
-                        fill={ORANGE} opacity={filterYear === y.release_year ? 1 : 0.7}
-                        rx={1}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)}
-                      />
-                    )
+                    return <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
+                      fill={ORANGE} opacity={filterYear === y.release_year ? 1 : 0.7} rx={1}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)} />
                   })}
                 </svg>
               </div>
-              {/* Revenue mini bar chart */}
               <div>
                 <div className="text-xs mb-1" style={{ color: '#555' }}>Sales</div>
-                <svg viewBox={`0 0 ${inventoryByYear.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
-                  {inventoryByYear.map((y, i) => {
+                <svg viewBox={`0 0 ${activeYearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
+                  {activeYearData.map((y, i) => {
                     const barH = (y.revenue_cents / maxYearRev) * 36
-                    return (
-                      <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
-                        fill={PINK} opacity={filterYear === y.release_year ? 1 : 0.7}
-                        rx={1}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)}
-                      />
-                    )
+                    return <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
+                      fill={PINK} opacity={filterYear === y.release_year ? 1 : 0.7} rx={1}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)} />
                   })}
                 </svg>
               </div>
-              {/* X-axis year labels */}
               <div className="flex justify-between" style={{ fontSize: 9, color: '#444' }}>
-                {[inventoryByYear[0], ...inventoryByYear.filter((_, i) => i % Math.floor(inventoryByYear.length / 5) === 0), inventoryByYear[inventoryByYear.length - 1]]
+                {[activeYearData[0], ...activeYearData.filter((_, i) => i % Math.max(Math.floor(activeYearData.length / 5), 1) === 0), activeYearData[activeYearData.length - 1]]
                   .filter((v, i, a) => a.findIndex(x => x.release_year === v.release_year) === i)
-                  .map(y => <span key={y.release_year}>{y.release_year}</span>)
-                }
+                  .map(y => <span key={y.release_year}>{y.release_year}</span>)}
               </div>
-              {filterYear && (
-                <div className="text-xs text-center mt-1" style={{ color: ORANGE }}>
-                  Filtered: {filterYear} — click again to clear
-                </div>
-              )}
             </div>
           ) : (
             <div className="text-xs text-center py-8" style={{ color: '#444' }}>
@@ -513,18 +588,6 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
           )}
         </ChartCard>
       </div>
-
-      {/* Active filters banner */}
-      {(filterFormat || filterCondition || filterGenre || filterYear) && (
-        <div className="flex items-center gap-3 px-4 py-2 rounded-lg border text-xs" style={{ background: '#1a1a0a', borderColor: '#3a3a1a', color: '#aaa' }}>
-          <span style={{ color: ORANGE }}>Active filters:</span>
-          {filterFormat    && <span className="px-2 py-0.5 rounded cursor-pointer hover:opacity-80" style={{ background: '#2a1a0a', color: ORANGE }} onClick={() => setFilterFormat(null)}>Format: {filterFormat} ✕</span>}
-          {filterCondition && <span className="px-2 py-0.5 rounded cursor-pointer hover:opacity-80" style={{ background: '#2a1a0a', color: ORANGE }} onClick={() => setFilterCondition(null)}>Condition: {filterCondition} ✕</span>}
-          {filterGenre     && <span className="px-2 py-0.5 rounded cursor-pointer hover:opacity-80" style={{ background: '#2a1a0a', color: ORANGE }} onClick={() => setFilterGenre(null)}>Genre: {filterGenre} ✕</span>}
-          {filterYear      && <span className="px-2 py-0.5 rounded cursor-pointer hover:opacity-80" style={{ background: '#2a1a0a', color: ORANGE }} onClick={() => setFilterYear(null)}>Year: {filterYear} ✕</span>}
-          <button className="ml-auto hover:opacity-80" style={{ color: '#555' }} onClick={() => { setFilterFormat(null); setFilterCondition(null); setFilterGenre(null); setFilterYear(null) }}>Clear all</button>
-        </div>
-      )}
 
     </div>
   )
@@ -1012,6 +1075,7 @@ export default function DeadWaxClient({
   enrichmentStats, enrichmentSample,
   squareKpis, squareSalesByDate, squareSalesByFormat,
   squareSalesByCondition, squareCatalogByGenre, squareInventoryByYear,
+  squareFlatFacts,
   userEmail,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('square')
@@ -1082,6 +1146,7 @@ export default function DeadWaxClient({
               salesByCondition={squareSalesByCondition}
               catalogByGenre={squareCatalogByGenre}
               inventoryByYear={squareInventoryByYear}
+              flatFacts={squareFlatFacts}
             />
           )}
           {activeTab === 'catalog' && (
