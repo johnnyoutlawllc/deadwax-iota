@@ -34,6 +34,8 @@ export default async function ChiPage() {
     { data: catalogOverview },
     { data: enrichmentStats },
     { data: enrichmentSample },
+    { data: discogsSample },
+    { data: lastfmSample },
     { data: squareKpis },
     { data: squareSalesByDate },
     { data: squareSalesByFormat },
@@ -76,6 +78,8 @@ export default async function ChiPage() {
     supabase.rpc('get_catalog_overview'),
     supabase.rpc('get_enrichment_stats'),
     supabase.rpc('get_enrichment_sample', { sample_limit: 50 }),
+    supabase.rpc('get_enrichment_sample_by_source', { p_source: 'discogs', sample_limit: 25 }),
+    supabase.rpc('get_enrichment_sample_by_source', { p_source: 'lastfm', sample_limit: 25 }),
     supabase.rpc('get_square_kpis'),
     supabase.rpc('get_square_sales_by_date', { days_back: 60 }),
     supabase.rpc('get_square_sales_by_format'),
@@ -101,6 +105,8 @@ export default async function ChiPage() {
       catalogOverview={catalogOverview ?? null}
       enrichmentStats={enrichmentStats ?? null}
       enrichmentSample={enrichmentSample ?? []}
+      discogsSample={discogsSample ?? []}
+      lastfmSample={lastfmSample ?? []}
       squareKpis={squareKpis ?? null}
       squareSalesByDate={squareSalesByDate ?? []}
       squareSalesByFormat={squareSalesByFormat ?? []}

@@ -155,6 +155,8 @@ interface Props {
   catalogOverview: CatalogData | null
   enrichmentStats: EnrichmentStats | null
   enrichmentSample: EnrichmentSample[]
+  discogsSample: SourceSampleRow[]
+  lastfmSample: SourceSampleRow[]
   squareKpis: SquareKpis | null
   squareSalesByDate: SalesByDate[]
   squareSalesByFormat: SalesByFormat[]
@@ -1686,6 +1688,26 @@ function DatabasePanel({ stats, onViewTable }: {
 
 // ─── Enrichment Panel ─────────────────────────────────────────────────────────
 
+interface SourceSampleRow {
+  catalog_object_id: string
+  item_name:         string
+  artist_name:       string | null
+  source:            string
+  discogs_price:     string | null
+  discogs_rating:    string | null
+  discogs_have:      string | null
+  discogs_want:      string | null
+  discogs_style:     string | null
+  discogs_genre:     string | null
+  discogs_cover_url: string | null
+  lastfm_genre:      string | null
+  mb_genre:          string | null
+  mb_label:          string | null
+  mb_year:           string | null
+  mb_type:           string | null
+  thumbnail_url:     string | null
+}
+
 interface EnrichmentStats {
   total_facts:      number
   albums_enriched:  number
@@ -1711,9 +1733,11 @@ interface EnrichmentSample {
   source_url:        string | null
 }
 
-function EnrichmentPanel({ stats, sample }: {
+function EnrichmentPanel({ stats, sample, discogsSample, lastfmSample }: {
   stats: EnrichmentStats | null
   sample: EnrichmentSample[]
+  discogsSample: SourceSampleRow[]
+  lastfmSample: SourceSampleRow[]
 }) {
   const factTypes = stats?.fact_type_counts
     ? Object.entries(stats.fact_type_counts).sort((a, b) => b[1] - a[1])
@@ -1857,7 +1881,146 @@ function EnrichmentPanel({ stats, sample }: {
         </section>
       )}
 
-      {sample.length === 0 && (
+      {/* Discogs sample — marketplace pricing, ratings, community stats */}
+      {discogsSample.length > 0 && (
+        <section>
+          <SectionHeader right={`${discogsSample.length} shown`}>
+            <span style={{ color: '#ff6b35' }}>Discogs</span> — Marketplace Pricing &amp; Ratings
+          </SectionHeader>
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface border-b border-border">
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted w-8" />
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted">Album</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-text-muted">Lowest $</th>
+                  <th className="text-center px-4 py-2.5 font-medium text-text-muted">Rating</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-text-muted hidden md:table-cell">Have</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-text-muted hidden md:table-cell">Want</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden lg:table-cell">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                {discogsSample.map((row, i) => {
+                  const rating = row.discogs_rating ? parseFloat(row.discogs_rating) : 0
+                  const price = row.discogs_price ? parseFloat(row.discogs_price) : 0
+                  return (
+                    <tr key={row.catalog_object_id} className={`border-b border-border last:border-0 ${i % 2 === 0 ? 'bg-background' : 'bg-surface'}`}>
+                      <td className="px-3 py-2">
+                        {row.thumbnail_url ? (
+                          <img src={row.thumbnail_url} alt="" className="w-8 h-8 rounded object-cover" style={{ border: '1px solid #222' }} />
+                        ) : (
+                          <div className="w-8 h-8 rounded flex items-center justify-center" style={{ background: '#1a1a1a', border: '1px solid #222' }}>
+                            <span style={{ fontSize: 14 }}>🎵</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {row.artist_name && (
+                          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#ff6b35', fontSize: 10 }}>{row.artist_name}</div>
+                        )}
+                        <div className="text-xs font-medium text-text-primary leading-tight" style={{ maxWidth: 280 }}>
+                          {row.item_name}
+                        </div>
+                        {row.mb_year && <span className="text-xs text-text-muted">{row.mb_year}</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        {price > 0 ? (
+                          <span className="font-bold tabular-nums" style={{ color: '#059669' }}>${price.toFixed(2)}</span>
+                        ) : (
+                          <span className="text-text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {rating > 0 ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <span style={{ color: '#f59e0b', fontSize: 12 }}>{'★'.repeat(Math.round(rating))}</span>
+                            <span className="text-xs text-text-muted tabular-nums">{rating.toFixed(1)}</span>
+                          </div>
+                        ) : (
+                          <span className="text-text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right hidden md:table-cell text-xs text-text-secondary tabular-nums">{row.discogs_have ? parseInt(row.discogs_have).toLocaleString() : '—'}</td>
+                      <td className="px-4 py-2.5 text-right hidden md:table-cell text-xs tabular-nums" style={{ color: row.discogs_want && parseInt(row.discogs_want) > 50 ? '#f59e0b' : undefined }}>
+                        {row.discogs_want ? parseInt(row.discogs_want).toLocaleString() : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 hidden lg:table-cell">
+                        {row.discogs_style ? (
+                          <div className="flex gap-1 flex-wrap">
+                            {row.discogs_style.split(', ').slice(0, 3).map(s => (
+                              <span key={s} className="text-xs px-1.5 py-0.5 rounded" style={{ background: '#1a1a2e', color: '#7c8aff', fontSize: 10 }}>{s}</span>
+                            ))}
+                          </div>
+                        ) : <span className="text-text-muted text-xs">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Last.fm sample — genre tags */}
+      {lastfmSample.length > 0 && (
+        <section>
+          <SectionHeader right={`${lastfmSample.length} shown`}>
+            <span style={{ color: '#d94343' }}>Last.fm</span> — Genre Tags
+          </SectionHeader>
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface border-b border-border">
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted w-8" />
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted">Album</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted">Last.fm Genres</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden md:table-cell">MB Genre</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden lg:table-cell">Label</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lastfmSample.map((row, i) => (
+                  <tr key={row.catalog_object_id} className={`border-b border-border last:border-0 ${i % 2 === 0 ? 'bg-background' : 'bg-surface'}`}>
+                    <td className="px-3 py-2">
+                      {row.thumbnail_url ? (
+                        <img src={row.thumbnail_url} alt="" className="w-8 h-8 rounded object-cover" style={{ border: '1px solid #222' }} />
+                      ) : (
+                        <div className="w-8 h-8 rounded flex items-center justify-center" style={{ background: '#1a1a1a', border: '1px solid #222' }}>
+                          <span style={{ fontSize: 14 }}>🎵</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {row.artist_name && (
+                        <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#ff6b35', fontSize: 10 }}>{row.artist_name}</div>
+                      )}
+                      <div className="text-xs font-medium text-text-primary leading-tight" style={{ maxWidth: 240 }}>
+                        {row.item_name}
+                      </div>
+                      {row.mb_year && <span className="text-xs text-text-muted">{row.mb_year}</span>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {row.lastfm_genre ? (
+                        <div className="flex gap-1 flex-wrap">
+                          {row.lastfm_genre.split(', ').slice(0, 5).map(g => (
+                            <span key={g} className="text-xs px-1.5 py-0.5 rounded" style={{ background: '#1a0d0d', color: '#d94343', fontSize: 10 }}>{g}</span>
+                          ))}
+                        </div>
+                      ) : <span className="text-text-muted text-xs">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 hidden md:table-cell text-xs text-text-secondary">{row.mb_genre ?? '—'}</td>
+                    <td className="px-4 py-2.5 hidden lg:table-cell text-xs text-text-secondary">{row.mb_label ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {sample.length === 0 && discogsSample.length === 0 && lastfmSample.length === 0 && (
         <div className="rounded-xl border border-border flex items-center justify-center py-12" style={{ borderStyle: 'dashed' }}>
           <span className="text-sm text-text-muted">Enrichment still running — check back shortly</span>
         </div>
@@ -1874,7 +2037,7 @@ export default function DeadWaxClient({
   squareSummary, squareTopItems, recentPayments,
   instagramMedia, instagramAccount, instagramDemographics,
   facebookPosts, dbStats, columnProfiles, catalogOverview,
-  enrichmentStats, enrichmentSample,
+  enrichmentStats, enrichmentSample, discogsSample, lastfmSample,
   squareKpis, squareSalesByDate, squareSalesByFormat,
   squareSalesByCondition, squareCatalogByGenre, squareInventoryByYear,
   squareFlatFacts,
@@ -1986,7 +2149,7 @@ export default function DeadWaxClient({
             />
           )}
           {activeTab === 'enrichment' && (
-            <EnrichmentPanel stats={enrichmentStats} sample={enrichmentSample} />
+            <EnrichmentPanel stats={enrichmentStats} sample={enrichmentSample} discogsSample={discogsSample} lastfmSample={lastfmSample} />
           )}
         </section>
 
