@@ -599,12 +599,12 @@ export default function ShopClient() {
             </div>
           )}
 
-          {summaryLoading ? (
+          {!summary && summaryLoading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
               <div style={{ width: 24, height: 24, border: `2px solid ${BORDER}`, borderTopColor: ORANGE, borderRadius: '50%', animation: 'spin 0.75s linear infinite' }} />
             </div>
           ) : summary && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, opacity: summaryLoading ? 0.5 : 1, transition: 'opacity 0.15s ease' }}>
               <BarChart title="Format" data={summary.by_format}
                 activeLabel={filterFormat || null} onBarClick={handleFormat} />
 
