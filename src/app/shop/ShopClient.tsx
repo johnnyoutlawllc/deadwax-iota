@@ -415,6 +415,7 @@ export default function ShopClient() {
   const [items, setItems] = useState<ShopItem[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [page, setPage] = useState(1)
 
   // Filters driven by charts
@@ -436,8 +437,11 @@ export default function ShopClient() {
   const hasFilters = !!(filterFormat || filterGenre || filterDecade || filterSearch)
 
   // ── Load summary (cross-filtered) + catalog items together ───────────────
+  const initialLoad = useRef(true)
   const fetchAll = useCallback(async (p: number, isSearch = false) => {
-    if (p === 1) setLoading(true)
+    // Only show full spinner on very first load — filter changes keep content visible
+    if (p === 1 && initialLoad.current) setLoading(true)
+    else setRefreshing(true)
     if (!isSearch) setSummaryLoading(true)
 
     const summaryParams = {
@@ -475,6 +479,8 @@ export default function ShopClient() {
       setTotalCount(0)
     }
     setLoading(false)
+    setRefreshing(false)
+    initialLoad.current = false
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterFormat, filterGenre, filterDecade, filterSearch])
 
@@ -658,7 +664,7 @@ export default function ShopClient() {
 
           ) : (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, opacity: refreshing ? 0.45 : 1, transition: 'opacity 0.2s ease', pointerEvents: refreshing ? 'none' : 'auto' }}>
                 {items.map(item => (
                   <ItemCard key={item.catalog_object_id} item={item} onClick={() => setDetailItem(item)} inCart={cartIds.has(item.catalog_object_id)} />
                 ))}
