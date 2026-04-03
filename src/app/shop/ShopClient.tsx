@@ -60,6 +60,13 @@ interface ShopItem {
   record_label:      string | null
   release_type:      string | null
   total_count:       number
+  discogs_price:     string | null
+  discogs_rating:    string | null
+  discogs_have:      string | null
+  discogs_want:      string | null
+  styles:            string | null
+  lastfm_genres:     string | null
+  cover_url:         string | null
 }
 
 interface CartItem extends ShopItem { quantity: number }
@@ -120,14 +127,32 @@ function ConditionBadge({ condition }: { condition: string | null }) {
 }
 
 // ─── Item Card ────────────────────────────────────────────────────────────────
+function StarRating({ rating }: { rating: number }) {
+  const full  = Math.floor(rating)
+  const half  = rating - full >= 0.3
+  const empty = 5 - full - (half ? 1 : 0)
+  return (
+    <span style={{ display: 'inline-flex', gap: 1, color: '#f59e0b', fontSize: 11, lineHeight: 1 }}>
+      {'★'.repeat(full)}{half ? '½' : ''}
+      <span style={{ color: '#333' }}>{'★'.repeat(empty)}</span>
+    </span>
+  )
+}
+
 function ItemCard({ item, onAdd, inCart }: { item: ShopItem; onAdd: (i: ShopItem) => void; inCart: boolean }) {
   const [imgErr, setImgErr] = useState(false)
-  const artUrl  = httpsUrl(item.thumbnail_url)
+  // Prefer Discogs cover, then CoverArtArchive
+  const artUrl  = httpsUrl(item.cover_url) || httpsUrl(item.thumbnail_url)
   const hasArt  = !!artUrl && !imgErr
   const isHot   = item.performance_tier === 'Hot'
   const isEnr   = !!item.artist_name
+  const hasDiscogs = !!item.discogs_price || !!item.discogs_rating
   const dispArtist = item.artist_name ?? null
   const dispTitle  = item.album_title  || item.name
+  const rating     = item.discogs_rating ? parseFloat(item.discogs_rating) : 0
+  const discogsPrice = item.discogs_price ? parseFloat(item.discogs_price) : 0
+  const haveCount  = item.discogs_have ? parseInt(item.discogs_have) : 0
+  const wantCount  = item.discogs_want ? parseInt(item.discogs_want) : 0
 
   return (
     <div
@@ -161,17 +186,32 @@ function ItemCard({ item, onAdd, inCart }: { item: ShopItem; onAdd: (i: ShopItem
           </div>
         )}
 
-        {/* MusicBrainz enriched badge */}
-        {isEnr && (
-          <div style={{ position: 'absolute', top: 9, left: 9, background: 'rgba(0,0,0,0.65)', border: '1px solid #333', color: '#888', fontSize: 9, fontWeight: 600, padding: '3px 8px', borderRadius: 20, letterSpacing: '0.04em', backdropFilter: 'blur(4px)' }}>
-            MusicBrainz
-          </div>
-        )}
+        {/* Source badges — top-left */}
+        <div style={{ position: 'absolute', top: 9, left: 9, display: 'flex', gap: 4 }}>
+          {isEnr && (
+            <div style={{ background: 'rgba(0,0,0,0.65)', border: '1px solid #333', color: '#888', fontSize: 9, fontWeight: 600, padding: '3px 8px', borderRadius: 20, letterSpacing: '0.04em', backdropFilter: 'blur(4px)' }}>
+              MB
+            </div>
+          )}
+          {hasDiscogs && (
+            <div style={{ background: 'rgba(0,0,0,0.65)', border: '1px solid #444', color: '#ccc', fontSize: 9, fontWeight: 600, padding: '3px 8px', borderRadius: 20, letterSpacing: '0.04em', backdropFilter: 'blur(4px)' }}>
+              Discogs
+            </div>
+          )}
+        </div>
 
         {/* Times sold — bottom-left overlay on artwork */}
         {item.times_sold > 0 && hasArt && (
           <div style={{ position: 'absolute', bottom: 8, left: 10, color: 'rgba(255,255,255,0.55)', fontSize: 10 }}>
             Sold {item.times_sold}×
+          </div>
+        )}
+
+        {/* Discogs community stats — bottom-right overlay */}
+        {(haveCount > 0 || wantCount > 0) && hasArt && (
+          <div style={{ position: 'absolute', bottom: 8, right: 10, display: 'flex', gap: 8, color: 'rgba(255,255,255,0.5)', fontSize: 9, fontWeight: 600 }}>
+            {haveCount > 0 && <span>Have {haveCount.toLocaleString()}</span>}
+            {wantCount > 0 && <span style={{ color: '#f59e0b99' }}>Want {wantCount.toLocaleString()}</span>}
           </div>
         )}
       </div>
@@ -190,14 +230,33 @@ function ItemCard({ item, onAdd, inCart }: { item: ShopItem; onAdd: (i: ShopItem
           {dispTitle}
         </div>
 
+        {/* Discogs rating */}
+        {rating > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <StarRating rating={rating} />
+            <span style={{ color: '#666', fontSize: 10 }}>{rating.toFixed(1)}</span>
+          </div>
+        )}
+
         {/* Badges row */}
         <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginTop: 2 }}>
           <FormatBadge format={item.format} />
           <ConditionBadge condition={item.condition} />
           {item.genre && (
-            <span style={{ color: '#555', fontSize: 10, textTransform: 'capitalize' }}>{item.genre}</span>
+            <span style={{ color: '#555', fontSize: 10, textTransform: 'capitalize' }}>{item.genre.split(', ').slice(0, 2).join(', ')}</span>
           )}
         </div>
+
+        {/* Styles from Discogs */}
+        {item.styles && (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 1 }}>
+            {item.styles.split(', ').slice(0, 3).map(s => (
+              <span key={s} style={{ background: '#1a1a2e', color: '#7c8aff', fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 3, letterSpacing: '0.02em' }}>
+                {s}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Meta row: label + year */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 1 }}>
@@ -211,9 +270,28 @@ function ItemCard({ item, onAdd, inCart }: { item: ShopItem; onAdd: (i: ShopItem
           )}
         </div>
 
+        {/* Last.fm genre tags */}
+        {item.lastfm_genres && !item.styles && (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 1 }}>
+            {item.lastfm_genres.split(', ').slice(0, 3).map(g => (
+              <span key={g} style={{ background: '#1a0d0d', color: '#d94343', fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 3, letterSpacing: '0.02em' }}>
+                {g}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Times sold (no artwork case) */}
         {item.times_sold > 0 && !hasArt && (
           <div style={{ color: '#444', fontSize: 10 }}>Sold {item.times_sold}×</div>
+        )}
+
+        {/* Have/Want (no artwork case) */}
+        {(haveCount > 0 || wantCount > 0) && !hasArt && (
+          <div style={{ display: 'flex', gap: 8, color: '#555', fontSize: 10 }}>
+            {haveCount > 0 && <span>Have {haveCount.toLocaleString()}</span>}
+            {wantCount > 0 && <span style={{ color: '#b59e0b' }}>Want {wantCount.toLocaleString()}</span>}
+          </div>
         )}
 
         {/* Spacer */}
@@ -221,10 +299,17 @@ function ItemCard({ item, onAdd, inCart }: { item: ShopItem; onAdd: (i: ShopItem
 
         {/* Price + cart */}
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: TEXT, fontSize: 17, fontWeight: 800 }}>
-              {fmtPrice(item.avg_price)}
-            </span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ color: TEXT, fontSize: 17, fontWeight: 800 }}>
+                {fmtPrice(item.avg_price)}
+              </span>
+              {discogsPrice > 0 && (
+                <span style={{ color: '#059669', fontSize: 10, fontWeight: 600, marginTop: 1 }}>
+                  Discogs from ${discogsPrice.toFixed(2)}
+                </span>
+              )}
+            </div>
             {item.release_type && (
               <span style={{ color: '#444', fontSize: 10, fontStyle: 'italic' }}>{item.release_type}</span>
             )}
@@ -651,9 +736,12 @@ export default function ShopClient() {
 
           {/* Enrichment callout */}
           <div style={{ marginTop: 24, padding: '12px 14px', background: '#0d0d0d', border: `1px solid #1a1a1a`, borderRadius: 10 }}>
-            <div style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>Powered by</div>
-            <div style={{ color: '#888', fontSize: 11, lineHeight: '1.5' }}>
-              Catalog enriched via <span style={{ color: '#ba11ff', fontWeight: 600 }}>MusicBrainz</span> — artist names, genres, release dates &amp; album art from Square POS data.
+            <div style={{ color: '#555', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>Enriched by</div>
+            <div style={{ color: '#888', fontSize: 11, lineHeight: '1.7' }}>
+              <span style={{ color: '#ba11ff', fontWeight: 600 }}>MusicBrainz</span> — artists, releases, dates<br/>
+              <span style={{ color: '#ff6b35', fontWeight: 600 }}>Discogs</span> — pricing, ratings, styles<br/>
+              <span style={{ color: '#d94343', fontWeight: 600 }}>Last.fm</span> — genre tags<br/>
+              <span style={{ color: '#0ea5e9', fontWeight: 600 }}>CoverArtArchive</span> — album artwork
             </div>
           </div>
         </aside>

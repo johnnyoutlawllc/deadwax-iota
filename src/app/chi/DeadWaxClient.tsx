@@ -1694,6 +1694,7 @@ interface EnrichmentStats {
   total_catalog:    number
   match_rate:       number
   fact_type_counts: Record<string, number> | null
+  source_breakdown: Record<string, { total_facts: number; unique_items: number }> | null
 }
 
 interface EnrichmentSample {
@@ -1718,16 +1719,45 @@ function EnrichmentPanel({ stats, sample }: {
     ? Object.entries(stats.fact_type_counts).sort((a, b) => b[1] - a[1])
     : []
 
+  const sources = stats?.source_breakdown
+    ? Object.entries(stats.source_breakdown).sort((a, b) => b[1].total_facts - a[1].total_facts)
+    : []
+
+  const sourceColors: Record<string, string> = {
+    musicbrainz:     '#ba11ff',
+    coverartarchive: '#0ea5e9',
+    discogs:         '#ff6b35',
+    lastfm:          '#d94343',
+  }
+
   return (
     <div className="flex flex-col gap-6">
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Albums Enriched" value={stats?.albums_enriched?.toLocaleString() ?? '—'} sub={`of ${stats?.total_catalog?.toLocaleString() ?? '?'} catalog items`} accent />
-        <StatCard label="Match Rate"      value={stats ? `${stats.match_rate}%` : '—'} sub="found on MusicBrainz" />
+        <StatCard label="Items Enriched" value={stats?.albums_enriched?.toLocaleString() ?? '—'} sub={`of ${stats?.total_catalog?.toLocaleString() ?? '?'} catalog items`} accent />
+        <StatCard label="Match Rate"      value={stats ? `${stats.match_rate}%` : '—'} sub="across all sources" />
         <StatCard label="Total Facts"     value={stats?.total_facts?.toLocaleString() ?? '—'} sub="rows in enrichment table" />
-        <StatCard label="With Cover Art"  value={stats?.with_cover_art?.toLocaleString() ?? '—'} sub="thumbnail URLs stored" />
+        <StatCard label="With Cover Art"  value={stats?.with_cover_art?.toLocaleString() ?? '—'} sub="from Discogs + CoverArt" />
       </div>
+
+      {/* Source breakdown cards */}
+      {sources.length > 0 && (
+        <section>
+          <SectionHeader>Enrichment Sources</SectionHeader>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {sources.map(([source, data]) => (
+              <div key={source} className="rounded-xl border border-border p-4" style={{ borderLeftWidth: 3, borderLeftColor: sourceColors[source] ?? '#555' }}>
+                <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: sourceColors[source] ?? '#888' }}>
+                  {source === 'coverartarchive' ? 'CoverArt' : source.charAt(0).toUpperCase() + source.slice(1)}
+                </div>
+                <div className="text-lg font-bold text-text-primary">{data.unique_items.toLocaleString()}</div>
+                <div className="text-xs text-text-muted">items · {data.total_facts.toLocaleString()} facts</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Fact type breakdown */}
       {factTypes.length > 0 && (
