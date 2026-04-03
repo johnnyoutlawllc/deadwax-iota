@@ -34,6 +34,12 @@ export default async function ChiPage() {
     { data: catalogOverview },
     { data: enrichmentStats },
     { data: enrichmentSample },
+    { data: squareKpis },
+    { data: squareSalesByDate },
+    { data: squareSalesByFormat },
+    { data: squareSalesByCondition },
+    { data: squareCatalogByGenre },
+    { data: squareInventoryByYear },
   ] = await Promise.all([
     supabase.rpc('get_square_summary'),
 
@@ -67,6 +73,12 @@ export default async function ChiPage() {
     supabase.rpc('get_catalog_overview'),
     supabase.rpc('get_enrichment_stats'),
     supabase.rpc('get_enrichment_sample', { sample_limit: 50 }),
+    supabase.rpc('get_square_kpis'),
+    supabase.rpc('get_square_sales_by_date', { days_back: 60 }),
+    supabase.rpc('get_square_sales_by_format'),
+    supabase.rpc('get_square_sales_by_condition'),
+    supabase.rpc('get_square_catalog_by_genre'),
+    supabase.rpc('get_square_inventory_by_year'),
   ])
 
   return (
@@ -83,6 +95,12 @@ export default async function ChiPage() {
       catalogOverview={catalogOverview ?? null}
       enrichmentStats={enrichmentStats ?? null}
       enrichmentSample={enrichmentSample ?? []}
+      squareKpis={squareKpis ?? null}
+      squareSalesByDate={squareSalesByDate ?? []}
+      squareSalesByFormat={squareSalesByFormat ?? []}
+      squareSalesByCondition={squareSalesByCondition ?? []}
+      squareCatalogByGenre={squareCatalogByGenre ?? []}
+      squareInventoryByYear={squareInventoryByYear ?? []}
       userEmail={user.email ?? ''}
     />
   )

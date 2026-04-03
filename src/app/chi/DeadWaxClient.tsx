@@ -83,6 +83,43 @@ interface DbStatRow {
   size_bytes: number
 }
 
+interface SquareKpis {
+  customer_count: number
+  unique_items_sold: number
+  total_sales_cents: number
+}
+
+interface SalesByDate {
+  sale_date: string
+  order_count: number
+  total_money_cents: number
+}
+
+interface SalesByFormat {
+  format: string
+  times_sold: number
+  revenue_cents: number
+  item_count: number
+}
+
+interface SalesByCondition {
+  condition: string
+  times_sold: number
+  revenue_cents: number
+}
+
+interface CatalogByGenre {
+  genre: string
+  inventory_count: number
+  revenue_cents: number
+}
+
+interface InventoryByYear {
+  release_year: number
+  inventory_count: number
+  revenue_cents: number
+}
+
 interface Props {
   squareSummary: SquareSummary | null
   squareTopItems: TopItem[]
@@ -96,6 +133,12 @@ interface Props {
   catalogOverview: CatalogData | null
   enrichmentStats: EnrichmentStats | null
   enrichmentSample: EnrichmentSample[]
+  squareKpis: SquareKpis | null
+  squareSalesByDate: SalesByDate[]
+  squareSalesByFormat: SalesByFormat[]
+  squareSalesByCondition: SalesByCondition[]
+  squareCatalogByGenre: CatalogByGenre[]
+  squareInventoryByYear: InventoryByYear[]
   userEmail: string
 }
 
@@ -165,102 +208,323 @@ function SectionHeader({ children, right }: { children: React.ReactNode; right?:
 
 // ─── Square Panel ─────────────────────────────────────────────────────────────
 
-function SquarePanel({ summary, topItems, payments }: {
-  summary: SquareSummary | null
-  topItems: TopItem[]
-  payments: Payment[]
-}) {
-  return (
-    <div className="flex flex-col gap-6">
+const ORANGE = '#ff6b35'
+const PINK   = '#e879a0'
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          label="Total Revenue"
-          value={summary ? fmtMoney(summary.total_revenue) : '—'}
-          sub="completed orders"
-          accent
-        />
-        <StatCard
-          label="Orders"
-          value={summary?.total_orders?.toLocaleString() ?? '—'}
-          sub="completed"
-        />
-        <StatCard
-          label="Avg Order"
-          value={summary ? fmtMoney(Math.round(summary.avg_order)) : '—'}
-          sub="per transaction"
-        />
-        <StatCard
-          label="Last Sale"
-          value={summary?.last_order ? fmtRelative(summary.last_order) : '—'}
-          sub={summary?.last_order ? fmtDate(summary.last_order) : undefined}
-        />
+function fmtDollars(cents: number) {
+  const d = cents / 100
+  if (d >= 1000000) return `$${(d / 1000000).toFixed(1)}M`
+  if (d >= 1000)    return `$${(d / 1000).toFixed(0)}K`
+  return `$${d.toFixed(0)}`
+}
+
+function fmtDateShort(iso: string) {
+  const d = new Date(iso + 'T00:00:00')
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+/** Dual horizontal bar row — left bar = color1, right bar = color2 */
+function DualBarRow({ label, val1, max1, val2, max2, fmt1, fmt2, color1 = ORANGE, color2 = PINK, selected, onClick }: {
+  label: string; val1: number; max1: number; val2: number; max2: number
+  fmt1: (v: number) => string; fmt2: (v: number) => string
+  color1?: string; color2?: string; selected?: boolean; onClick?: () => void
+}) {
+  const pct1 = max1 > 0 ? (val1 / max1) * 100 : 0
+  const pct2 = max2 > 0 ? (val2 / max2) * 100 : 0
+  return (
+    <div
+      onClick={onClick}
+      className="flex items-center gap-2 py-1 px-2 rounded transition-colors"
+      style={{
+        cursor: onClick ? 'pointer' : 'default',
+        background: selected ? 'rgba(255,107,53,0.08)' : 'transparent',
+      }}
+    >
+      {/* Label */}
+      <span className="text-xs text-right shrink-0 truncate" style={{ width: 120, color: '#ccc' }} title={label}>
+        {label}
+      </span>
+      {/* Bar 1 */}
+      <div className="flex items-center gap-1 flex-1">
+        <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ background: '#1a1a1a' }}>
+          <div className="h-full rounded-sm" style={{ width: `${pct1}%`, background: color1, opacity: 0.85 }} />
+        </div>
+        <span className="text-xs tabular-nums shrink-0" style={{ color: '#aaa', width: 40, textAlign: 'right' }}>
+          {fmt1(val1)}
+        </span>
+      </div>
+      {/* Bar 2 */}
+      <div className="flex items-center gap-1 flex-1">
+        <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ background: '#1a1a1a' }}>
+          <div className="h-full rounded-sm" style={{ width: `${pct2}%`, background: color2, opacity: 0.85 }} />
+        </div>
+        <span className="text-xs tabular-nums shrink-0" style={{ color: '#aaa', width: 52, textAlign: 'right' }}>
+          {fmt2(val2)}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border flex flex-col" style={{ background: '#0d0d0d', borderColor: '#1e1e1e' }}>
+      <div className="px-4 pt-3 pb-2 border-b" style={{ borderColor: '#1a1a1a' }}>
+        <div className="text-sm font-semibold text-white">{title}</div>
+        {subtitle && <div className="text-xs mt-0.5" style={{ color: '#555' }}>{subtitle}</div>}
+      </div>
+      <div className="flex-1 p-3">{children}</div>
+    </div>
+  )
+}
+
+function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catalogByGenre, inventoryByYear }: {
+  kpis: SquareKpis | null
+  salesByDate: SalesByDate[]
+  salesByFormat: SalesByFormat[]
+  salesByCondition: SalesByCondition[]
+  catalogByGenre: CatalogByGenre[]
+  inventoryByYear: InventoryByYear[]
+}) {
+  const [filterFormat, setFilterFormat]       = useState<string | null>(null)
+  const [filterCondition, setFilterCondition] = useState<string | null>(null)
+  const [filterGenre, setFilterGenre]         = useState<string | null>(null)
+  const [filterYear, setFilterYear]           = useState<number | null>(null)
+
+  // ── Sales by Date mini chart ────────────────────────────────────────────────
+  const maxOrders = Math.max(...salesByDate.map(d => d.order_count), 1)
+  const maxMoney  = Math.max(...salesByDate.map(d => d.total_money_cents), 1)
+
+  // Only show last 30 days in the chart to keep it readable
+  const dateSlice = salesByDate.slice(-30)
+
+  // ── Format bars ─────────────────────────────────────────────────────────────
+  const maxFmtSold = Math.max(...salesByFormat.map(f => f.times_sold), 1)
+  const maxFmtRev  = Math.max(...salesByFormat.map(f => f.revenue_cents), 1)
+
+  // ── Condition bars ──────────────────────────────────────────────────────────
+  const maxCondSold = Math.max(...salesByCondition.map(c => c.times_sold), 1)
+  const maxCondRev  = Math.max(...salesByCondition.map(c => c.revenue_cents), 1)
+
+  // ── Genre bars ──────────────────────────────────────────────────────────────
+  const maxGenreCount = Math.max(...catalogByGenre.map(g => g.inventory_count), 1)
+  const maxGenreRev   = Math.max(...catalogByGenre.map(g => g.revenue_cents), 1)
+
+  // ── Year chart ──────────────────────────────────────────────────────────────
+  const maxYearCount = Math.max(...inventoryByYear.map(y => y.inventory_count), 1)
+  const maxYearRev   = Math.max(...inventoryByYear.map(y => y.revenue_cents), 1)
+
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* ── Row 1: KPI cards + Sales by Date ─────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* KPI stack */}
+        <div className="flex flex-col gap-3">
+          {[
+            { label: 'Customer Count',    value: kpis?.customer_count?.toLocaleString()     ?? '—' },
+            { label: 'Unique Items Sold', value: kpis?.unique_items_sold?.toLocaleString()  ?? '—' },
+            { label: 'Total Sales',       value: kpis ? fmtDollars(kpis.total_sales_cents) : '—' },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded-xl border flex flex-col items-center justify-center py-4 gap-1"
+              style={{ background: '#0d0d0d', borderColor: '#1e1e1e' }}>
+              <span className="text-2xl font-bold text-white">{value}</span>
+              <span className="text-xs" style={{ color: '#555' }}>{label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Sales by Date */}
+        <div className="lg:col-span-2">
+          <ChartCard title="Sales by Date" subtitle="last 30 days · bars = orders, line = revenue">
+            {dateSlice.length === 0 ? (
+              <div className="text-xs text-center py-6" style={{ color: '#444' }}>No data</div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {/* Dual-axis bar chart using SVG */}
+                <svg viewBox={`0 0 ${dateSlice.length * 18} 80`} className="w-full" style={{ height: 100 }} preserveAspectRatio="none">
+                  {/* Revenue line */}
+                  <polyline
+                    fill="none"
+                    stroke={PINK}
+                    strokeWidth="1.5"
+                    points={dateSlice.map((d, i) => {
+                      const x = i * 18 + 9
+                      const y = 76 - (d.total_money_cents / maxMoney) * 70
+                      return `${x},${y}`
+                    }).join(' ')}
+                  />
+                  {/* Order count bars */}
+                  {dateSlice.map((d, i) => {
+                    const barH = (d.order_count / maxOrders) * 60
+                    const x = i * 18 + 2
+                    return (
+                      <rect key={i} x={x} y={76 - barH} width={14} height={barH}
+                        fill={ORANGE} opacity={0.75} rx={1} />
+                    )
+                  })}
+                </svg>
+                {/* X-axis labels — show every ~7th */}
+                <div className="flex justify-between px-1" style={{ fontSize: 9, color: '#444' }}>
+                  {dateSlice.filter((_, i) => i % 7 === 0 || i === dateSlice.length - 1).map(d => (
+                    <span key={d.sale_date}>{fmtDateShort(d.sale_date)}</span>
+                  ))}
+                </div>
+                {/* Legend */}
+                <div className="flex gap-4 justify-end mt-1" style={{ fontSize: 10, color: '#666' }}>
+                  <span><span style={{ color: ORANGE }}>■</span> Order Count</span>
+                  <span><span style={{ color: PINK }}>─</span> Revenue</span>
+                </div>
+              </div>
+            )}
+          </ChartCard>
+        </div>
       </div>
 
-      {/* Top Items */}
-      <section>
-        <SectionHeader right={`top ${topItems.length} by revenue`}>🏆 Top Selling Items</SectionHeader>
-        <div className="rounded-xl overflow-hidden border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-surface border-b border-border">
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Item</th>
-                <th className="text-right px-4 py-2.5 font-medium text-text-muted hidden sm:table-cell">Sold</th>
-                <th className="text-right px-4 py-2.5 font-medium text-text-muted">Revenue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {topItems.map((item, i) => (
-                <tr key={i} className={`border-b border-border last:border-0 ${i % 2 === 0 ? 'bg-background' : 'bg-surface'}`}>
-                  <td className="px-4 py-3 text-text-primary font-medium">{item.name}</td>
-                  <td className="px-4 py-3 text-right text-text-muted hidden sm:table-cell">{item.times_sold.toLocaleString()}×</td>
-                  <td className="px-4 py-3 text-right font-semibold text-text-primary">{fmtMoney(item.revenue)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* ── Row 2: Sales by Format + Sales by Condition ───────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-      {/* Recent Payments */}
-      <section>
-        <SectionHeader right={`last ${payments.length}`}>💳 Recent Payments</SectionHeader>
-        <div className="rounded-xl overflow-hidden border border-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-surface border-b border-border">
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">Amount</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden sm:table-cell">Method</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden md:table-cell">Note</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted">When</th>
-                <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden lg:table-cell">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((p, i) => (
-                <tr key={p.payment_id} className={`border-b border-border last:border-0 ${i % 2 === 0 ? 'bg-background' : 'bg-surface'}`}>
-                  <td className="px-4 py-3 font-semibold text-text-primary">{fmtMoney(p.total_money)}</td>
-                  <td className="px-4 py-3 text-text-muted hidden sm:table-cell">
-                    {p.source_type === 'CASH' ? 'Cash' : p.card_brand ? `${p.card_brand} ···${p.last_4}` : p.source_type}
-                  </td>
-                  <td className="px-4 py-3 text-text-muted hidden md:table-cell">{truncate(p.note, 40)}</td>
-                  <td className="px-4 py-3 text-text-muted">{fmtRelative(p.created_at)}</td>
-                  <td className="px-4 py-3 hidden lg:table-cell">
-                    <span className="text-xs px-2 py-0.5 rounded-full"
-                      style={{
-                        background: p.status === 'COMPLETED' ? '#1a2e1a' : '#2e1a1a',
-                        color: p.status === 'COMPLETED' ? '#4ade80' : '#f87171',
-                      }}>
-                      {p.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <ChartCard title="Sales by Format" subtitle="click to filter">
+          {/* Column headers */}
+          <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+            <span style={{ width: 120 }} />
+            <span className="flex-1 text-center">Times Sold</span>
+            <span className="flex-1 text-center">Revenue Dollars</span>
+          </div>
+          {salesByFormat.map(f => (
+            <DualBarRow
+              key={f.format}
+              label={f.format}
+              val1={f.times_sold} max1={maxFmtSold}
+              val2={f.revenue_cents} max2={maxFmtRev}
+              fmt1={v => v.toLocaleString()}
+              fmt2={v => fmtDollars(v)}
+              selected={filterFormat === f.format}
+              onClick={() => setFilterFormat(p => p === f.format ? null : f.format)}
+            />
+          ))}
+          {salesByFormat.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#444' }}>No data</div>}
+        </ChartCard>
+
+        <ChartCard title="Sales by Condition" subtitle="click to filter">
+          <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+            <span style={{ width: 120 }} />
+            <span className="flex-1 text-center">Times Sold</span>
+            <span className="flex-1 text-center">Revenue Dollars</span>
+          </div>
+          {salesByCondition.map(c => (
+            <DualBarRow
+              key={c.condition}
+              label={c.condition}
+              val1={c.times_sold} max1={maxCondSold}
+              val2={c.revenue_cents} max2={maxCondRev}
+              fmt1={v => v.toLocaleString()}
+              fmt2={v => fmtDollars(v)}
+              selected={filterCondition === c.condition}
+              onClick={() => setFilterCondition(p => p === c.condition ? null : c.condition)}
+            />
+          ))}
+          {salesByCondition.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#444' }}>No data</div>}
+        </ChartCard>
+      </div>
+
+      {/* ── Row 3: Catalog by Genre + Inventory by Release Year ───────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <ChartCard title="Catalog by Genre" subtitle="click to filter">
+          <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+            <span style={{ width: 120 }} />
+            <span className="flex-1 text-center">Inventory Count</span>
+            <span className="flex-1 text-center">Sales</span>
+          </div>
+          {catalogByGenre.length > 0 ? catalogByGenre.slice(0, 15).map(g => (
+            <DualBarRow
+              key={g.genre}
+              label={g.genre}
+              val1={g.inventory_count} max1={maxGenreCount}
+              val2={g.revenue_cents} max2={maxGenreRev}
+              fmt1={v => v.toLocaleString()}
+              fmt2={v => fmtDollars(v)}
+              selected={filterGenre === g.genre}
+              onClick={() => setFilterGenre(p => p === g.genre ? null : g.genre)}
+            />
+          )) : (
+            <div className="text-xs text-center py-8" style={{ color: '#444' }}>
+              Enrichment still running — genre data will appear as albums are matched
+            </div>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Inventory by Release Year" subtitle="click to filter">
+          {inventoryByYear.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {/* Inventory Count mini bar chart */}
+              <div>
+                <div className="text-xs mb-1" style={{ color: '#555' }}>Inventory Count</div>
+                <svg viewBox={`0 0 ${inventoryByYear.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
+                  {inventoryByYear.map((y, i) => {
+                    const barH = (y.inventory_count / maxYearCount) * 36
+                    return (
+                      <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
+                        fill={ORANGE} opacity={filterYear === y.release_year ? 1 : 0.7}
+                        rx={1}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)}
+                      />
+                    )
+                  })}
+                </svg>
+              </div>
+              {/* Revenue mini bar chart */}
+              <div>
+                <div className="text-xs mb-1" style={{ color: '#555' }}>Sales</div>
+                <svg viewBox={`0 0 ${inventoryByYear.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
+                  {inventoryByYear.map((y, i) => {
+                    const barH = (y.revenue_cents / maxYearRev) * 36
+                    return (
+                      <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
+                        fill={PINK} opacity={filterYear === y.release_year ? 1 : 0.7}
+                        rx={1}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setFilterYear(p => p === y.release_year ? null : y.release_year)}
+                      />
+                    )
+                  })}
+                </svg>
+              </div>
+              {/* X-axis year labels */}
+              <div className="flex justify-between" style={{ fontSize: 9, color: '#444' }}>
+                {[inventoryByYear[0], ...inventoryByYear.filter((_, i) => i % Math.floor(inventoryByYear.length / 5) === 0), inventoryByYear[inventoryByYear.length - 1]]
+                  .filter((v, i, a) => a.findIndex(x => x.release_year === v.release_year) === i)
+                  .map(y => <span key={y.release_year}>{y.release_year}</span>)
+                }
+              </div>
+              {filterYear && (
+                <div className="text-xs text-center mt-1" style={{ color: ORANGE }}>
+                  Filtered: {filterYear} — click again to clear
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs text-center py-8" style={{ color: '#444' }}>
+              Enrichment still running — release year data will appear as albums are matched
+            </div>
+          )}
+        </ChartCard>
+      </div>
+
+      {/* Active filters banner */}
+      {(filterFormat || filterCondition || filterGenre || filterYear) && (
+        <div className="flex items-center gap-3 px-4 py-2 rounded-lg border text-xs" style={{ background: '#1a1a0a', borderColor: '#3a3a1a', color: '#aaa' }}>
+          <span style={{ color: ORANGE }}>Active filters:</span>
+          {filterFormat    && <span className="px-2 py-0.5 rounded cursor-pointer hover:opacity-80" style={{ background: '#2a1a0a', color: ORANGE }} onClick={() => setFilterFormat(null)}>Format: {filterFormat} ✕</span>}
+          {filterCondition && <span className="px-2 py-0.5 rounded cursor-pointer hover:opacity-80" style={{ background: '#2a1a0a', color: ORANGE }} onClick={() => setFilterCondition(null)}>Condition: {filterCondition} ✕</span>}
+          {filterGenre     && <span className="px-2 py-0.5 rounded cursor-pointer hover:opacity-80" style={{ background: '#2a1a0a', color: ORANGE }} onClick={() => setFilterGenre(null)}>Genre: {filterGenre} ✕</span>}
+          {filterYear      && <span className="px-2 py-0.5 rounded cursor-pointer hover:opacity-80" style={{ background: '#2a1a0a', color: ORANGE }} onClick={() => setFilterYear(null)}>Year: {filterYear} ✕</span>}
+          <button className="ml-auto hover:opacity-80" style={{ color: '#555' }} onClick={() => { setFilterFormat(null); setFilterCondition(null); setFilterGenre(null); setFilterYear(null) }}>Clear all</button>
         </div>
-      </section>
+      )}
 
     </div>
   )
@@ -745,7 +1009,10 @@ export default function DeadWaxClient({
   squareSummary, squareTopItems, recentPayments,
   instagramMedia, instagramAccount, instagramDemographics,
   facebookPosts, dbStats, columnProfiles, catalogOverview,
-  enrichmentStats, enrichmentSample, userEmail,
+  enrichmentStats, enrichmentSample,
+  squareKpis, squareSalesByDate, squareSalesByFormat,
+  squareSalesByCondition, squareCatalogByGenre, squareInventoryByYear,
+  userEmail,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('square')
   const [viewerTable, setViewerTable] = useState<{ schema: string; table: string } | null>(null)
@@ -808,7 +1075,14 @@ export default function DeadWaxClient({
           </div>
 
           {activeTab === 'square' && (
-            <SquarePanel summary={squareSummary} topItems={squareTopItems} payments={recentPayments} />
+            <SquarePanel
+              kpis={squareKpis}
+              salesByDate={squareSalesByDate}
+              salesByFormat={squareSalesByFormat}
+              salesByCondition={squareSalesByCondition}
+              catalogByGenre={squareCatalogByGenre}
+              inventoryByYear={squareInventoryByYear}
+            />
           )}
           {activeTab === 'catalog' && (
             catalogOverview
