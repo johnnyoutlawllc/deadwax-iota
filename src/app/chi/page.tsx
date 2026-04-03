@@ -32,6 +32,8 @@ export default async function ChiPage() {
     { data: dbStats },
     { data: columnProfiles },
     { data: catalogOverview },
+    { data: enrichmentStats },
+    { data: enrichmentSample },
   ] = await Promise.all([
     supabase.rpc('get_square_summary'),
 
@@ -63,6 +65,8 @@ export default async function ChiPage() {
     supabase.rpc('get_db_stats'),
     supabase.rpc('get_all_column_profiles'),
     supabase.rpc('get_catalog_overview'),
+    supabase.rpc('get_enrichment_stats'),
+    supabase.rpc('get_enrichment_sample', { sample_limit: 50 }),
   ])
 
   return (
@@ -77,6 +81,8 @@ export default async function ChiPage() {
       dbStats={dbStats ?? []}
       columnProfiles={columnProfiles ?? []}
       catalogOverview={catalogOverview ?? null}
+      enrichmentStats={enrichmentStats ?? null}
+      enrichmentSample={enrichmentSample ?? []}
       userEmail={user.email ?? ''}
     />
   )

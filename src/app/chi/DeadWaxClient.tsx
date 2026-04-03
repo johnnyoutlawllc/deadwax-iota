@@ -94,6 +94,8 @@ interface Props {
   dbStats: DbStatRow[]
   columnProfiles: RawColumnProfile[]
   catalogOverview: CatalogData | null
+  enrichmentStats: EnrichmentStats | null
+  enrichmentSample: EnrichmentSample[]
   userEmail: string
 }
 
@@ -477,6 +479,7 @@ const DB_CATEGORIES: { label: string; icon: string; tables: string[] }[] = [
   { label: 'Instagram', icon: '📸', tables: ['instagram_media', 'instagram_media_insights', 'instagram_demographics', 'instagram_account_history', 'instagram_insights'] },
   { label: 'Facebook', icon: '👥', tables: ['facebook_posts', 'facebook_post_metrics'] },
   { label: 'TikTok', icon: '🎵', tables: ['tiktok_videos', 'tiktok_video_snapshots', 'tiktok_accounts'] },
+  { label: 'Enrichment', icon: '🎵', tables: ['catalog_enrichment'] },
 ]
 
 function DatabasePanel({ stats, onViewTable }: {
@@ -566,14 +569,167 @@ function DatabasePanel({ stats, onViewTable }: {
   )
 }
 
+// ─── Enrichment Panel ─────────────────────────────────────────────────────────
+
+interface EnrichmentStats {
+  total_facts:      number
+  albums_enriched:  number
+  not_found:        number
+  with_cover_art:   number
+  total_catalog:    number
+  match_rate:       number
+  fact_type_counts: Record<string, number> | null
+}
+
+interface EnrichmentSample {
+  catalog_object_id: string
+  item_name:         string
+  release_date:      string | null
+  record_label:      string | null
+  genre:             string | null
+  release_type:      string | null
+  country:           string | null
+  total_tracks:      string | null
+  thumbnail_url:     string | null
+  confidence:        string | null
+  source_url:        string | null
+}
+
+function EnrichmentPanel({ stats, sample }: {
+  stats: EnrichmentStats | null
+  sample: EnrichmentSample[]
+}) {
+  const factTypes = stats?.fact_type_counts
+    ? Object.entries(stats.fact_type_counts).sort((a, b) => b[1] - a[1])
+    : []
+
+  return (
+    <div className="flex flex-col gap-6">
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard label="Albums Enriched" value={stats?.albums_enriched?.toLocaleString() ?? '—'} sub={`of ${stats?.total_catalog?.toLocaleString() ?? '?'} catalog items`} accent />
+        <StatCard label="Match Rate"      value={stats ? `${stats.match_rate}%` : '—'} sub="found on MusicBrainz" />
+        <StatCard label="Total Facts"     value={stats?.total_facts?.toLocaleString() ?? '—'} sub="rows in enrichment table" />
+        <StatCard label="With Cover Art"  value={stats?.with_cover_art?.toLocaleString() ?? '—'} sub="thumbnail URLs stored" />
+      </div>
+
+      {/* Fact type breakdown */}
+      {factTypes.length > 0 && (
+        <section>
+          <SectionHeader>Fact Type Breakdown</SectionHeader>
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface border-b border-border">
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted">Fact Type</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-text-muted">Count</th>
+                  <th className="px-4 py-2.5 hidden md:table-cell" />
+                </tr>
+              </thead>
+              <tbody>
+                {factTypes.map(([type, count], i) => {
+                  const max = factTypes[0][1]
+                  const pct = max > 0 ? (count / max) * 100 : 0
+                  return (
+                    <tr key={type} className={`border-b border-border last:border-0 ${i % 2 === 0 ? 'bg-background' : 'bg-surface'}`}>
+                      <td className="px-4 py-2.5 font-mono text-xs text-text-secondary">{type}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-text-primary">{count.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 hidden md:table-cell w-40">
+                        <div className="w-full h-1.5 rounded-full bg-border overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#ff6b35' }} />
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Sample enriched albums */}
+      {sample.length > 0 && (
+        <section>
+          <SectionHeader right={`${sample.length} shown`}>Enriched Albums — Sample</SectionHeader>
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface border-b border-border">
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted w-8" />
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted">Album</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden md:table-cell">Label</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden lg:table-cell">Genre</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden sm:table-cell">Released</th>
+                  <th className="text-center px-4 py-2.5 font-medium text-text-muted hidden md:table-cell">Tracks</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden lg:table-cell">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sample.map((row, i) => (
+                  <tr key={row.catalog_object_id} className={`border-b border-border last:border-0 ${i % 2 === 0 ? 'bg-background' : 'bg-surface'}`}>
+                    {/* Thumbnail */}
+                    <td className="px-3 py-2">
+                      {row.thumbnail_url ? (
+                        <img
+                          src={row.thumbnail_url}
+                          alt=""
+                          className="w-8 h-8 rounded object-cover"
+                          style={{ border: '1px solid #222' }}
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded flex items-center justify-center" style={{ background: '#1a1a1a', border: '1px solid #222' }}>
+                          <span style={{ fontSize: 14 }}>🎵</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="text-xs font-medium text-text-primary leading-tight" style={{ maxWidth: 240 }}>
+                        {row.item_name}
+                      </div>
+                      {row.release_type && (
+                        <span className="text-xs text-text-muted">{row.release_type}{row.country ? ` · ${row.country}` : ''}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 hidden md:table-cell text-xs text-text-secondary">{row.record_label ?? '—'}</td>
+                    <td className="px-4 py-2.5 hidden lg:table-cell text-xs text-text-secondary">{row.genre ?? '—'}</td>
+                    <td className="px-4 py-2.5 hidden sm:table-cell text-xs text-text-secondary tabular-nums">{row.release_date ?? '—'}</td>
+                    <td className="px-4 py-2.5 hidden md:table-cell text-xs text-text-secondary text-center">{row.total_tracks ?? '—'}</td>
+                    <td className="px-4 py-2.5 hidden lg:table-cell">
+                      {row.source_url ? (
+                        <a href={row.source_url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs hover:text-accent transition-colors" style={{ color: '#555' }}>
+                          MusicBrainz →
+                        </a>
+                      ) : <span style={{ color: '#444', fontSize: 11 }}>—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {sample.length === 0 && (
+        <div className="rounded-xl border border-border flex items-center justify-center py-12" style={{ borderStyle: 'dashed' }}>
+          <span className="text-sm text-text-muted">Enrichment still running — check back shortly</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type Tab = 'square' | 'instagram' | 'facebook' | 'tiktok' | 'catalog' | 'database' | 'db-overview'
+type Tab = 'square' | 'instagram' | 'facebook' | 'tiktok' | 'catalog' | 'database' | 'db-overview' | 'enrichment'
 
 export default function DeadWaxClient({
   squareSummary, squareTopItems, recentPayments,
   instagramMedia, instagramAccount, instagramDemographics,
-  facebookPosts, dbStats, columnProfiles, catalogOverview, userEmail,
+  facebookPosts, dbStats, columnProfiles, catalogOverview,
+  enrichmentStats, enrichmentSample, userEmail,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('square')
   const [viewerTable, setViewerTable] = useState<{ schema: string; table: string } | null>(null)
@@ -621,6 +777,7 @@ export default function DeadWaxClient({
             <TabButton active={activeTab === 'tiktok'}      onClick={() => setActiveTab('tiktok')}>🎵 TikTok</TabButton>
             <TabButton active={activeTab === 'database'}    onClick={() => setActiveTab('database')}>🗄️ Database</TabButton>
             <TabButton active={activeTab === 'db-overview'} onClick={() => setActiveTab('db-overview')}>🗺️ DB Overview</TabButton>
+            <TabButton active={activeTab === 'enrichment'}  onClick={() => setActiveTab('enrichment')}>✨ Enrichment</TabButton>
           </div>
 
           {activeTab === 'square' && (
@@ -652,6 +809,9 @@ export default function DeadWaxClient({
               dbStats={dbStats}
               onViewTable={(schema, table) => setViewerTable({ schema, table })}
             />
+          )}
+          {activeTab === 'enrichment' && (
+            <EnrichmentPanel stats={enrichmentStats} sample={enrichmentSample} />
           )}
         </section>
 

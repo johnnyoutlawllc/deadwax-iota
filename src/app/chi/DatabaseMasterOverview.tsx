@@ -66,6 +66,7 @@ const PLATFORMS: PlatformGroup[] = [
   { label: 'Facebook', icon: '👥', tables: ['facebook_posts','facebook_post_metrics'] },
   { label: 'TikTok', icon: '🎵', tables: ['tiktok_videos','tiktok_video_snapshots','tiktok_accounts'] },
   { label: 'Internal', icon: '🏢', tables: ['client_accounts','clients'] },
+  { label: 'Enrichment', icon: '✨', tables: ['catalog_enrichment'] },
 ]
 
 const NUMERIC_TYPES = ['integer','bigint','smallint','numeric','real','double precision','money']
