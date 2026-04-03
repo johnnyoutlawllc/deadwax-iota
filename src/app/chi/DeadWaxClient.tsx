@@ -277,13 +277,14 @@ interface FlatFact {
 
 function applyFilters(
   facts: FlatFact[],
-  filters: { format: string | null; condition: string | null; genre: string | null; year: number | null },
-  exclude: 'format' | 'condition' | 'genre' | 'year' | null = null
+  filters: { format: string | null; condition: string | null; genre: string | null; year: number | null; date: string | null },
+  exclude: 'format' | 'condition' | 'genre' | 'year' | 'date' | null = null
 ) {
   return facts.filter(f => {
     if (exclude !== 'format'    && filters.format    && f.format !== filters.format) return false
     if (exclude !== 'condition' && filters.condition && f.condition !== filters.condition) return false
     if (exclude !== 'year'      && filters.year      && f.release_year !== filters.year) return false
+    if (exclude !== 'date'      && filters.date      && f.sale_date !== filters.date) return false
     if (exclude !== 'genre'     && filters.genre) {
       const genreList = (f.genres ?? '').split(',').map(g => g.trim())
       if (!genreList.includes(filters.genre!)) return false
@@ -366,13 +367,14 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
   const [filterCondition, setFilterCondition] = useState<string | null>(null)
   const [filterGenre, setFilterGenre]         = useState<string | null>(null)
   const [filterYear, setFilterYear]           = useState<number | null>(null)
+  const [filterDate, setFilterDate]           = useState<string | null>(null)
 
-  const hasFilter = !!(filterFormat || filterCondition || filterGenre || filterYear)
-  const filters   = { format: filterFormat, condition: filterCondition, genre: filterGenre, year: filterYear }
+  const hasFilter = !!(filterFormat || filterCondition || filterGenre || filterYear || filterDate)
+  const filters   = { format: filterFormat, condition: filterCondition, genre: filterGenre, year: filterYear, date: filterDate }
 
   // When filters active, re-derive each chart from flat facts,
   // excluding each chart's own dimension so it shows full range with cross-filter applied
-  const activeDateData  = hasFilter ? aggByDate(applyFilters(flatFacts, filters))               : salesByDate
+  const activeDateData       = hasFilter ? aggByDate(applyFilters(flatFacts, filters, 'date'))           : salesByDate
   const activeFormatData     = hasFilter ? aggByFormat(applyFilters(flatFacts, filters, 'format'))       : salesByFormat
   const activeConditionData  = hasFilter ? aggByCondition(applyFilters(flatFacts, filters, 'condition')) : salesByCondition
   const activeGenreData      = hasFilter ? aggByGenre(applyFilters(flatFacts, filters, 'genre'))         : catalogByGenre
@@ -395,7 +397,7 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
   const filteredFacts = hasFilter ? applyFilters(flatFacts, filters) : null
   const filteredRevenue = filteredFacts ? filteredFacts.reduce((s, f) => s + f.revenue_cents, 0) : null
 
-  function clearAll() { setFilterFormat(null); setFilterCondition(null); setFilterGenre(null); setFilterYear(null) }
+  function clearAll() { setFilterFormat(null); setFilterCondition(null); setFilterGenre(null); setFilterYear(null); setFilterDate(null) }
 
   return (
     <div className="flex flex-col gap-4">
@@ -433,6 +435,13 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
               Year: {filterYear} <span style={{ fontSize: 10 }}>✕</span>
             </button>
           )}
+          {filterDate      && (
+            <button onClick={() => setFilterDate(null)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
+              style={{ background: '#2a1a0a', color: ORANGE }}>
+              Date: {fmtDateShort(filterDate)} <span style={{ fontSize: 10 }}>✕</span>
+            </button>
+          )}
           {filteredRevenue !== null && (
             <span className="ml-2" style={{ color: '#666' }}>
               {filteredFacts!.length.toLocaleString()} orders · {fmtDollars(filteredRevenue)} revenue
@@ -464,17 +473,25 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
 
         {/* Sales by Date */}
         <div className="lg:col-span-2">
-          <ChartCard title="Sales by Date" subtitle="last 30 days · bars = orders, line = revenue">
+          <ChartCard title="Sales by Date" subtitle="last 30 days · click bar to filter · bars = orders, line = revenue">
             {dateSlice.length === 0 ? (
-              <div className="text-xs text-center py-6" style={{ color: '#444' }}>No data</div>
+              <div className="text-xs text-center py-6" style={{ color: '#444' }}>No data for this selection</div>
             ) : (
               <div className="flex flex-col gap-1">
-                <svg viewBox={`0 0 ${dateSlice.length * 18} 80`} className="w-full" style={{ height: 100 }} preserveAspectRatio="none">
+                <svg viewBox={`0 0 ${dateSlice.length * 18} 80`} className="w-full" style={{ height: 100, cursor: 'pointer' }} preserveAspectRatio="none">
                   <polyline fill="none" stroke={PINK} strokeWidth="1.5"
                     points={dateSlice.map((d, i) => `${i * 18 + 9},${76 - (d.total_money_cents / maxMoney) * 70}`).join(' ')} />
                   {dateSlice.map((d, i) => {
                     const barH = (d.order_count / maxOrders) * 60
-                    return <rect key={i} x={i * 18 + 2} y={76 - barH} width={14} height={barH} fill={ORANGE} opacity={0.75} rx={1} />
+                    const isSelected = filterDate === d.sale_date
+                    return (
+                      <rect key={i} x={i * 18 + 2} y={76 - barH} width={14} height={barH}
+                        fill={ORANGE} opacity={isSelected ? 1 : 0.75} rx={1}
+                        onClick={() => setFilterDate(p => p === d.sale_date ? null : d.sale_date)}
+                      >
+                        <title>{fmtDateShort(d.sale_date)}: {d.order_count} orders</title>
+                      </rect>
+                    )
                   })}
                 </svg>
                 <div className="flex justify-between px-1" style={{ fontSize: 9, color: '#444' }}>
@@ -507,7 +524,7 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
               selected={filterFormat === f.format}
               onClick={() => setFilterFormat(p => p === f.format ? null : f.format)} />
           ))}
-          {activeFormatData.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#444' }}>No data</div>}
+          {activeFormatData.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#666' }}>No sales match this filter combination</div>}
         </ChartCard>
 
         <ChartCard title="Sales by Condition" subtitle="click to filter">
@@ -523,7 +540,7 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
               selected={filterCondition === c.condition}
               onClick={() => setFilterCondition(p => p === c.condition ? null : c.condition)} />
           ))}
-          {activeConditionData.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#444' }}>No data</div>}
+          {activeConditionData.length === 0 && <div className="text-xs text-center py-4" style={{ color: '#666' }}>No sales match this filter combination</div>}
         </ChartCard>
       </div>
 
@@ -541,7 +558,11 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
               fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
               selected={filterGenre === g.genre}
               onClick={() => setFilterGenre(p => p === g.genre ? null : g.genre)} />
-          )) : (
+          )) : hasFilter ? (
+            <div className="text-xs text-center py-8" style={{ color: '#666' }}>
+              No genre data matches this filter combination
+            </div>
+          ) : (
             <div className="text-xs text-center py-8" style={{ color: '#444' }}>
               Enrichment still running — genre data will appear as albums are matched
             </div>
