@@ -7,8 +7,9 @@
  * Role-based dashboard: Alan (Owner), Brad (Operations), Sam (Social)
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -571,22 +572,25 @@ function AlbumPlaceholder() {
   )
 }
 
-function InventoryBrowser({ items, accent, genreFilter }: { items: InventoryItem[]; accent: string; genreFilter: string | null }) {
+function InventoryBrowser({
+  items, accent, genreFilter, loading, onClearFilter,
+}: {
+  items: InventoryItem[]
+  accent: string
+  genreFilter: string | null
+  loading?: boolean
+  onClearFilter: () => void
+}) {
   const [view, setView] = useState<'art' | 'detail'>('art')
   const [page, setPage] = useState(1)
   const PER_PAGE = 60
 
-  const filtered = useMemo(() => {
-    if (!genreFilter) return items
-    return items.filter(item =>
-      item.genres.split(', ').some(g => g.trim().toLowerCase() === genreFilter.toLowerCase())
-    )
-  }, [items, genreFilter])
+  // items are already filtered server-side when genreFilter is active
+  const totalPages = Math.ceil(items.length / PER_PAGE)
+  const paged = items.slice((page - 1) * PER_PAGE, page * PER_PAGE)
 
-  const totalPages = Math.ceil(filtered.length / PER_PAGE)
-  const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
-
-  // Reset page when filter changes
+  // Reset page when items change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useMemo(() => setPage(1), [genreFilter])
 
   return (
@@ -600,14 +604,21 @@ function InventoryBrowser({ items, accent, genreFilter }: { items: InventoryItem
             </button>
           ))}
         </div>
-        <span style={{ fontSize: 12, color: MUTED }}>
-          {filtered.length} item{filtered.length !== 1 ? 's' : ''}
-          {genreFilter ? ` in "${genreFilter}"` : ' total'}
-        </span>
-        {genreFilter && (
-          <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: accent + '22', color: accent, fontWeight: 600 }}>
-            {genreFilter} ×
+        {loading ? (
+          <span style={{ fontSize: 12, color: MUTED }}>Loading…</span>
+        ) : (
+          <span style={{ fontSize: 12, color: MUTED }}>
+            {items.length} item{items.length !== 1 ? 's' : ''}
+            {genreFilter ? ` in "${genreFilter}"` : ' total'}
           </span>
+        )}
+        {genreFilter && (
+          <button
+            onClick={onClearFilter}
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: accent + '22', color: accent, fontWeight: 600, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            {genreFilter} <span style={{ fontSize: 13, lineHeight: 1 }}>×</span>
+          </button>
         )}
       </div>
 
@@ -791,11 +802,36 @@ function AlanCustomers({ customers, stats, accent, orderHistory }: { customers: 
 
 function AlanInventoryMix({ genres, inventoryItems, accent }: { genres: GenreRow[]; inventoryItems: InventoryItem[]; accent: string }) {
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null)
+  const [genreItems, setGenreItems]       = useState<InventoryItem[] | null>(null)
+  const [loadingGenre, setLoadingGenre]   = useState(false)
   const top = genres.slice(0, 20)
+
+  // Fetch filtered inventory server-side when genre is selected
+  useEffect(() => {
+    if (!selectedGenre) { setGenreItems(null); return }
+    let cancelled = false
+    setLoadingGenre(true)
+    const sb = createClient()
+    sb.rpc('get_mgmt_inventory_items', { p_genre: selectedGenre, p_page: 1, p_page_size: 500 })
+      .then(({ data }) => {
+        if (!cancelled) {
+          setGenreItems((data as InventoryItem[]) ?? [])
+          setLoadingGenre(false)
+        }
+      })
+    return () => { cancelled = true }
+  }, [selectedGenre])
 
   function handleGenreClick(label: string) {
     setSelectedGenre(g => g === label ? null : label)
   }
+
+  function clearFilter() {
+    setSelectedGenre(null)
+    setGenreItems(null)
+  }
+
+  const displayItems = selectedGenre !== null && genreItems !== null ? genreItems : inventoryItems
 
   return (
     <div>
@@ -834,14 +870,20 @@ function AlanInventoryMix({ genres, inventoryItems, accent }: { genres: GenreRow
 
       {/* Inventory Browser */}
       <Section
-        title={'Inventory Browser' + (selectedGenre ? ' — ' + selectedGenre : ' — All Items')}
+        title={'Inventory Browser' + (selectedGenre ? ' — ' + selectedGenre.replace(/\b\w/g, c => c.toUpperCase()) : ' — All Items')}
         action={selectedGenre ? (
-          <button onClick={() => setSelectedGenre(null)} style={{ fontSize: 11, padding: '3px 10px', border: '1px solid ' + accent + '44', borderRadius: 20, background: accent + '15', color: accent, cursor: 'pointer', fontWeight: 600 }}>
-            ✕ Clear "{selectedGenre}"
+          <button onClick={clearFilter} style={{ fontSize: 11, padding: '3px 10px', border: '1px solid ' + accent + '44', borderRadius: 20, background: accent + '15', color: accent, cursor: 'pointer', fontWeight: 600 }}>
+            ✕ Clear
           </button>
         ) : undefined}
       >
-        <InventoryBrowser items={inventoryItems} accent={accent} genreFilter={selectedGenre} />
+        <InventoryBrowser
+          items={displayItems}
+          accent={accent}
+          genreFilter={selectedGenre}
+          loading={loadingGenre}
+          onClearFilter={clearFilter}
+        />
       </Section>
 
       <div style={{ background: accent + '11', border: '1px solid ' + accent + '33', borderRadius: 10, padding: '12px 16px', marginTop: 18 }}>
