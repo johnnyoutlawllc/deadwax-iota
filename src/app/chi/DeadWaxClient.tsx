@@ -2105,6 +2105,7 @@ export default function DeadWaxClient({
             <TabButton active={activeTab === 'enrichment'}  onClick={() => setActiveTab('enrichment')}>✨ Enrichment</TabButton>
             <div style={{ width: 1, background: '#333', alignSelf: 'stretch', margin: '2px 4px' }} />
             <TabButton active={false} onClick={() => router.push('/shop')}>🛍️ Shop</TabButton>
+            <TabButton active={false} onClick={() => router.push('/chi/mgmt')}>📊 Mgmt Dashboard</TabButton>
           </div>
 
           {activeTab === 'square' && (
