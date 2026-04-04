@@ -34,6 +34,9 @@ export default async function MgmtPage() {
     { data: igReachTrend },
     { data: fbSummary },
     { data: fbPosts },
+    { data: salesByDow },
+    { data: customerOrderHistory },
+    { data: inventoryItems },
   ] = await Promise.all([
     supabase.rpc('get_square_kpis'),
     supabase.rpc('get_square_sales_by_date', { days_back: 60 }),
@@ -47,6 +50,9 @@ export default async function MgmtPage() {
     supabase.rpc('get_mgmt_ig_reach_trend', { days_back: 30 }),
     supabase.rpc('get_mgmt_fb_summary'),
     supabase.rpc('get_mgmt_fb_posts', { post_limit: 50 }),
+    supabase.rpc('get_mgmt_sales_by_dow'),
+    supabase.rpc('get_mgmt_all_customer_orders', { p_customer_limit: 20 }),
+    supabase.rpc('get_mgmt_inventory_items', { p_genre: '', p_page: 1, p_page_size: 500 }),
   ])
 
   return (
@@ -64,6 +70,9 @@ export default async function MgmtPage() {
       igReachTrend={igReachTrend ?? []}
       fbSummary={fbSummary?.[0] ?? null}
       fbPosts={fbPosts ?? []}
+      salesByDow={salesByDow ?? []}
+      customerOrderHistory={customerOrderHistory ?? []}
+      inventoryItems={inventoryItems ?? []}
     />
   )
 }

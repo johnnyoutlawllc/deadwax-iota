@@ -12,25 +12,29 @@ import { useRouter } from 'next/navigation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Role = 'alan' | 'brad' | 'sam'
+type Role    = 'alan' | 'brad' | 'sam'
 type AlanTab = 'overview' | 'customers' | 'inventory-mix' | 'whats-working'
-type BradTab  = 'inventory' | 'events' | 'alerts'
-type SamTab   = 'post-tracker' | 'platforms'
+type BradTab = 'inventory' | 'events' | 'alerts'
+type SamTab  = 'post-tracker' | 'platforms'
 
-// get_square_kpis returns { total_sales_cents, customer_count, unique_items_sold }
 interface SquareKpis {
   total_sales_cents: number
   customer_count: number
   unique_items_sold: number
 }
-
-// get_square_sales_by_date returns { sale_date, order_count, total_money_cents }
 interface SalesByDate {
   sale_date: string
   order_count: number
   total_money_cents: number
+  unique_customers: number
 }
-
+interface SalesByDow {
+  dow: number
+  day_name: string
+  total_orders: number
+  total_revenue_cents: number
+  avg_revenue_cents: number
+}
 interface GenreRow    { genre: string; times_sold: number; revenue_cents: number }
 interface InventoryKpis {
   total_items: number; total_value_cents: number; avg_price_cents: number
@@ -44,6 +48,33 @@ interface Customer {
 interface CustomerStats {
   total_customers: number; customers_w_orders: number; total_orders: number
   avg_spend_per_customer: number; avg_orders_per_customer: number
+}
+interface CustomerOrderItem {
+  customer_id: string
+  order_id: string
+  order_date: string
+  order_total_cents: number
+  item_name: string
+  variation_name: string
+  quantity: number
+  item_price_cents: number
+  cover_url: string
+  artist_name: string
+  album_title: string
+}
+interface InventoryItem {
+  catalog_object_id: string
+  name: string
+  format: string | null
+  condition: string | null
+  times_sold: number
+  revenue_cents: number
+  avg_price_cents: number
+  cover_url: string
+  artist_name: string
+  album_title: string
+  genres: string
+  total_count: number
 }
 interface IgSummary {
   username: string; followers: number; media_count: number; total_posts: number
@@ -79,6 +110,9 @@ interface Props {
   igReachTrend: IgReach[]
   fbSummary: FbSummary | null
   fbPosts: FbPost[]
+  salesByDow: SalesByDow[]
+  customerOrderHistory: CustomerOrderItem[]
+  inventoryItems: InventoryItem[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,11 +141,14 @@ function fbPostUrl(postId: string): string {
   return 'https://www.facebook.com'
 }
 
+const DOW_ORDER = [1, 2, 3, 4, 5, 6, 0] // Mon-Sun display order
+
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 const BG     = '#0f0f1a'
 const CARD   = '#1a1a2a'
 const CARD2  = '#16162a'
+const CARD3  = '#121222'
 const BORDER = '#2d2d44'
 const MUTED  = '#64748b'
 const SUB    = '#94a3b8'
@@ -130,10 +167,13 @@ function KpiCard({ label, value, sub, accent }: { label: string; value: string; 
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div style={{ background: CARD, borderRadius: 12, padding: '18px 20px', marginBottom: 18 }}>
-      <div style={{ color: SUB, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600, marginBottom: 14 }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ color: SUB, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>{title}</div>
+        {action}
+      </div>
       {children}
     </div>
   )
@@ -157,6 +197,14 @@ function EngBadge({ val, color }: { val: number | null; color: string }) {
   )
 }
 
+function Chip({ label, color }: { label: string; color: string }) {
+  return (
+    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: color + '22', color, marginRight: 4 }}>
+      {label}
+    </span>
+  )
+}
+
 // ─── SVG Sparkline ────────────────────────────────────────────────────────────
 
 function Sparkline({ data, color, height = 52, width = 280 }: { data: number[]; color: string; height?: number; width?: number }) {
@@ -174,21 +222,35 @@ function Sparkline({ data, color, height = 52, width = 280 }: { data: number[]; 
   )
 }
 
-// ─── Bar Chart ────────────────────────────────────────────────────────────────
+// ─── Clickable Bar Chart ──────────────────────────────────────────────────────
 
-function BarChart({ rows, color }: { rows: { label: string; value: number }[]; color: string }) {
+function BarChart({
+  rows, color, onClickRow, selectedLabel,
+}: {
+  rows: { label: string; value: number }[]
+  color: string
+  onClickRow?: (label: string) => void
+  selectedLabel?: string | null
+}) {
   const max = Math.max(...rows.map(r => r.value), 1)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-      {rows.map(r => (
-        <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 130, fontSize: 12, color: SUB, textAlign: 'right', flexShrink: 0, textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</div>
-          <div style={{ flex: 1, background: CARD2, borderRadius: 3, height: 14, position: 'relative', minWidth: 60 }}>
-            <div style={{ width: (r.value / max * 100) + '%', height: '100%', background: color, borderRadius: 3, transition: 'width 0.4s ease' }} />
+      {rows.map(r => {
+        const isSelected = selectedLabel === r.label
+        return (
+          <div
+            key={r.label}
+            onClick={() => onClickRow?.(r.label)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: onClickRow ? 'pointer' : 'default', opacity: selectedLabel && !isSelected ? 0.45 : 1, transition: 'opacity 0.2s' }}
+          >
+            <div style={{ width: 130, fontSize: 12, color: isSelected ? color : SUB, fontWeight: isSelected ? 700 : 400, textAlign: 'right', flexShrink: 0, textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</div>
+            <div style={{ flex: 1, background: CARD2, borderRadius: 3, height: 14, position: 'relative', minWidth: 60 }}>
+              <div style={{ width: (r.value / max * 100) + '%', height: '100%', background: isSelected ? color : color + 'aa', borderRadius: 3, transition: 'width 0.4s ease' }} />
+            </div>
+            <div style={{ width: 64, fontSize: 12, color: isSelected ? color : TEXT, fontWeight: isSelected ? 700 : 400, flexShrink: 0 }}>{num(Math.round(r.value))}</div>
           </div>
-          <div style={{ width: 64, fontSize: 12, color: TEXT, flexShrink: 0 }}>{num(Math.round(r.value))}</div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -230,27 +292,117 @@ function RevenueChart({ data, color }: { data: SalesByDate[]; color: string }) {
   )
 }
 
+// ─── Unique Customers Chart ───────────────────────────────────────────────────
+
+function UniqueCustomersChart({ data, color }: { data: SalesByDate[]; color: string }) {
+  if (!data.length) return null
+  const W = 560; const H = 90; const PAD = 32
+  const vals = data.map(d => d.unique_customers ?? 0)
+  const maxV = Math.max(...vals, 1)
+  const xf = (i: number) => PAD + (i / Math.max(vals.length - 1, 1)) * (W - PAD * 2)
+  const yf = (v: number) => PAD + (1 - v / maxV) * (H - PAD * 2)
+  const linePts = vals.map((v, i) => xf(i) + ',' + yf(v)).join(' ')
+  const areaD = 'M' + xf(0) + ',' + yf(vals[0]) + ' L' + vals.map((v, i) => xf(i) + ',' + yf(v)).join(' L') +
+    ' L' + xf(vals.length - 1) + ',' + (H - PAD) + ' L' + PAD + ',' + (H - PAD) + ' Z'
+  const labelIdxs = [0, Math.floor(vals.length * 0.5), vals.length - 1].filter((v, i, a) => a.indexOf(v) === i && v < data.length)
+  return (
+    <svg viewBox={'0 0 ' + W + ' ' + H} style={{ width: '100%', minWidth: 280, display: 'block' }}>
+      <defs>
+        <linearGradient id="custGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <path d={areaD} fill="url(#custGrad)" />
+      <polyline points={linePts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      {[0, maxV].map((v, fi) => {
+        const yy = fi === 0 ? H - PAD : PAD
+        return <text key={fi} x={PAD - 5} y={yy + 4} textAnchor="end" fontSize={8} fill={MUTED}>{v}</text>
+      })}
+      {labelIdxs.map(i => (
+        <text key={i} x={xf(i)} y={H - 2} textAnchor="middle" fontSize={8} fill={MUTED}>
+          {new Date(data[i].sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        </text>
+      ))}
+    </svg>
+  )
+}
+
+// ─── DOW Chart ────────────────────────────────────────────────────────────────
+
+function DowChart({ data, color }: { data: SalesByDow[]; color: string }) {
+  if (!data.length) return <div style={{ color: MUTED, fontSize: 13 }}>No data</div>
+
+  const ordered = DOW_ORDER.map(d => data.find(r => r.dow === d)).filter(Boolean) as SalesByDow[]
+  const maxRev = Math.max(...ordered.map(r => r.total_revenue_cents / 100), 1)
+  const maxAvg = Math.max(...ordered.map(r => r.avg_revenue_cents / 100), 1)
+  const barW = 56
+  const W = ordered.length * (barW + 12) + 20
+  const H = 120
+  const PAD = 28
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+      {/* Total Revenue by DOW */}
+      <div>
+        <div style={{ color: MUTED, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Total Revenue</div>
+        <div style={{ overflowX: 'auto' }}>
+          <svg viewBox={'0 0 ' + W + ' ' + H} style={{ width: '100%', minWidth: 300, display: 'block' }}>
+            {ordered.map((r, i) => {
+              const v = r.total_revenue_cents / 100
+              const barH = Math.max(4, (v / maxRev) * (H - PAD - 20))
+              const x = i * (barW + 12) + 10
+              const y = H - PAD - barH
+              return (
+                <g key={r.dow}>
+                  <rect x={x} y={y} width={barW} height={barH} fill={color + 'cc'} rx={3} />
+                  <text x={x + barW / 2} y={H - PAD + 12} textAnchor="middle" fontSize={9} fill={SUB}>{r.day_name.slice(0, 3)}</text>
+                  <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize={8} fill={color}>
+                    {v >= 1000 ? '$' + (v / 1000).toFixed(1) + 'k' : '$' + v.toFixed(0)}
+                  </text>
+                </g>
+              )
+            })}
+          </svg>
+        </div>
+      </div>
+      {/* Avg Order Value by DOW */}
+      <div>
+        <div style={{ color: MUTED, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Avg Order Value</div>
+        <div style={{ overflowX: 'auto' }}>
+          <svg viewBox={'0 0 ' + W + ' ' + H} style={{ width: '100%', minWidth: 300, display: 'block' }}>
+            {ordered.map((r, i) => {
+              const v = r.avg_revenue_cents / 100
+              const barH = Math.max(4, (v / maxAvg) * (H - PAD - 20))
+              const x = i * (barW + 12) + 10
+              const y = H - PAD - barH
+              return (
+                <g key={r.dow}>
+                  <rect x={x} y={y} width={barW} height={barH} fill={color + '88'} rx={3} />
+                  <text x={x + barW / 2} y={H - PAD + 12} textAnchor="middle" fontSize={9} fill={SUB}>{r.day_name.slice(0, 3)}</text>
+                  <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize={8} fill={color}>
+                    {v >= 1000 ? '$' + (v / 1000).toFixed(1) + 'k' : '$' + v.toFixed(0)}
+                  </text>
+                </g>
+              )
+            })}
+          </svg>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Expandable Post Row ──────────────────────────────────────────────────────
 
 function IgPostRow({ p, accent }: { p: IgPost; accent: string }) {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <tr
-        onClick={() => setOpen(o => !o)}
-        style={{ borderTop: '1px solid ' + BORDER, cursor: 'pointer', background: open ? CARD + '88' : 'transparent' }}
-      >
+      <tr onClick={() => setOpen(o => !o)} style={{ borderTop: '1px solid ' + BORDER, cursor: 'pointer', background: open ? CARD + '88' : 'transparent' }}>
         <td style={{ padding: '9px 12px', color: MUTED, fontSize: 11 }}>{ago(p.posted_at)}</td>
-        <td style={{ padding: '9px 12px' }}>
-          <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 8, background: accent + '22', color: accent }}>
-            {p.media_type?.replace('_', ' ') ?? '—'}
-          </span>
-        </td>
-        <td style={{ padding: '9px 12px', maxWidth: 240 }}>
-          <span style={{ fontSize: 12, color: SUB, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {p.caption || '(no caption)'}
-          </span>
-        </td>
+        <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 8, background: accent + '22', color: accent }}>{p.media_type?.replace('_', ' ') ?? '—'}</span></td>
+        <td style={{ padding: '9px 12px', maxWidth: 240 }}><span style={{ fontSize: 12, color: SUB, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.caption || '(no caption)'}</span></td>
         <td style={{ padding: '9px 12px' }}><EngBadge val={p.likes}    color="#e1306c" /></td>
         <td style={{ padding: '9px 12px' }}><EngBadge val={p.comments} color="#f59e0b" /></td>
         <td style={{ padding: '9px 12px' }}><EngBadge val={p.saved}    color="#3b82f6" /></td>
@@ -261,21 +413,10 @@ function IgPostRow({ p, accent }: { p: IgPost; accent: string }) {
       {open && (
         <tr style={{ background: CARD2 }}>
           <td colSpan={9} style={{ padding: '14px 18px' }}>
-            <div style={{ fontSize: 13, color: TEXT, lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 10 }}>
-              {p.caption || '(no caption)'}
-            </div>
+            <div style={{ fontSize: 13, color: TEXT, lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 10 }}>{p.caption || '(no caption)'}</div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 11, color: MUTED }}>
-                {new Date(p.posted_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </span>
-              <span style={{ fontSize: 11, color: MUTED }}>· Media ID: {p.media_id}</span>
-              <a
-                href={'https://www.instagram.com/deadwaxrecords/'}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 11, padding: '3px 10px', borderRadius: 8, background: '#e1306c22', color: '#e1306c', textDecoration: 'none', fontWeight: 600 }}
-                onClick={e => e.stopPropagation()}
-              >
+              <span style={{ fontSize: 11, color: MUTED }}>{new Date(p.posted_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              <a href="https://www.instagram.com/deadwaxrecords/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '3px 10px', borderRadius: 8, background: '#e1306c22', color: '#e1306c', textDecoration: 'none', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
                 📸 View @deadwaxrecords
               </a>
             </div>
@@ -290,41 +431,24 @@ function FbPostRow({ p, accent }: { p: FbPost; accent: string }) {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <tr
-        onClick={() => setOpen(o => !o)}
-        style={{ borderTop: '1px solid ' + BORDER, cursor: 'pointer', background: open ? CARD + '88' : 'transparent' }}
-      >
+      <tr onClick={() => setOpen(o => !o)} style={{ borderTop: '1px solid ' + BORDER, cursor: 'pointer', background: open ? CARD + '88' : 'transparent' }}>
         <td style={{ padding: '9px 12px', color: MUTED, fontSize: 11 }}>{ago(p.created_time)}</td>
-        <td style={{ padding: '9px 12px', maxWidth: 240 }}>
-          <span style={{ fontSize: 12, color: SUB, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {p.message || '(no text)'}
-          </span>
-        </td>
-        <td style={{ padding: '9px 12px' }}><EngBadge val={p.clicks}          color="#1877f2" /></td>
+        <td style={{ padding: '9px 12px', maxWidth: 240 }}><span style={{ fontSize: 12, color: SUB, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.message || '(no text)'}</span></td>
+        <td style={{ padding: '9px 12px' }}><EngBadge val={p.clicks}           color="#1877f2" /></td>
         <td style={{ padding: '9px 12px' }}><EngBadge val={p.impressions_uniq} color={accent} /></td>
-        <td style={{ padding: '9px 12px' }}><EngBadge val={p.video_views}     color="#10b981" /></td>
-        <td style={{ padding: '9px 12px' }}><EngBadge val={p.likes}           color="#e1306c" /></td>
-        <td style={{ padding: '9px 12px' }}><EngBadge val={p.shares}          color="#f59e0b" /></td>
+        <td style={{ padding: '9px 12px' }}><EngBadge val={p.video_views}      color="#10b981" /></td>
+        <td style={{ padding: '9px 12px' }}><EngBadge val={p.likes}            color="#e1306c" /></td>
+        <td style={{ padding: '9px 12px' }}><EngBadge val={p.shares}           color="#f59e0b" /></td>
         <td style={{ padding: '9px 12px', fontWeight: 700, color: accent }}>{num(p.total_eng)}</td>
         <td style={{ padding: '9px 12px', color: MUTED, fontSize: 11 }}>{open ? '▲' : '▼'}</td>
       </tr>
       {open && (
         <tr style={{ background: CARD2 }}>
           <td colSpan={9} style={{ padding: '14px 18px' }}>
-            <div style={{ fontSize: 13, color: TEXT, lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 10 }}>
-              {p.message || '(no text)'}
-            </div>
+            <div style={{ fontSize: 13, color: TEXT, lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 10 }}>{p.message || '(no text)'}</div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 11, color: MUTED }}>
-                {new Date(p.created_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </span>
-              <a
-                href={fbPostUrl(p.post_id)}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ fontSize: 11, padding: '3px 10px', borderRadius: 8, background: '#1877f222', color: '#1877f2', textDecoration: 'none', fontWeight: 600 }}
-                onClick={e => e.stopPropagation()}
-              >
+              <span style={{ fontSize: 11, color: MUTED }}>{new Date(p.created_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              <a href={fbPostUrl(p.post_id)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '3px 10px', borderRadius: 8, background: '#1877f222', color: '#1877f2', textDecoration: 'none', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
                 👥 View on Facebook ↗
               </a>
             </div>
@@ -335,92 +459,395 @@ function FbPostRow({ p, accent }: { p: FbPost; accent: string }) {
   )
 }
 
-// ─── ALAN Dashboard ───────────────────────────────────────────────────────────
+// ─── Customer Expandable Row ──────────────────────────────────────────────────
 
-function AlanOverview({ kpis, sales, accent }: { kpis: SquareKpis | null; sales: SalesByDate[]; accent: string }) {
-  const totalRev = kpis ? kpis.total_sales_cents / 100 : 0
-  const totalOrders = sales.reduce((s, d) => s + d.order_count, 0)
-  const avgOrder = totalOrders > 0 ? totalRev / totalOrders : 0
+function CustomerRow({ c, rank, accent, orders }: { c: Customer; rank: number; accent: string; orders: CustomerOrderItem[] }) {
+  const [open, setOpen] = useState(false)
+
+  // Group orders by order_id
+  const grouped = useMemo(() => {
+    const map = new Map<string, CustomerOrderItem[]>()
+    orders.forEach(o => {
+      if (!map.has(o.order_id)) map.set(o.order_id, [])
+      map.get(o.order_id)!.push(o)
+    })
+    return Array.from(map.entries()).sort((a, b) =>
+      new Date(b[1][0].order_date).getTime() - new Date(a[1][0].order_date).getTime()
+    )
+  }, [orders])
+
+  return (
+    <>
+      <tr
+        onClick={() => setOpen(o => !o)}
+        style={{ borderTop: '1px solid ' + BORDER, cursor: 'pointer', background: open ? accent + '08' : 'transparent', transition: 'background 0.15s' }}
+      >
+        <td style={{ padding: '12px 14px', color: rank < 3 ? accent : MUTED, fontWeight: 700, fontSize: 15 }}>
+          {rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1}
+        </td>
+        <td style={{ padding: '12px 14px' }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{c.full_name}</div>
+          <div style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace', marginTop: 2 }}>{c.customer_id.slice(0, 24)}…</div>
+        </td>
+        <td style={{ padding: '12px 14px', color: SUB, fontSize: 13 }}>{num(c.order_count)}</td>
+        <td style={{ padding: '12px 14px', fontWeight: 700, color: accent, fontSize: 14 }}>{$$(c.total_spend, 2)}</td>
+        <td style={{ padding: '12px 14px', color: MUTED, fontSize: 12 }}>
+          {orders.length > 0
+            ? <span style={{ fontSize: 11, padding: '2px 8px', background: accent + '20', color: accent, borderRadius: 20, fontWeight: 600 }}>
+                {grouped.length} order{grouped.length !== 1 ? 's' : ''}
+              </span>
+            : <span style={{ fontSize: 11, color: MUTED }}>no history</span>
+          }
+        </td>
+        <td style={{ padding: '12px 14px', color: MUTED, fontSize: 12 }}>{open ? '▲ Hide' : '▼ Orders'}</td>
+      </tr>
+
+      {open && (
+        <tr style={{ background: CARD3 }}>
+          <td colSpan={6} style={{ padding: '0 0 2px' }}>
+            {grouped.length === 0 ? (
+              <div style={{ padding: '16px 20px', color: MUTED, fontSize: 13 }}>No linked order history found.</div>
+            ) : (
+              <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {grouped.map(([orderId, items]) => (
+                  <div key={orderId} style={{ background: CARD, borderRadius: 10, overflow: 'hidden', border: '1px solid ' + BORDER }}>
+                    {/* Order header */}
+                    <div style={{ padding: '10px 16px', background: CARD2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid ' + BORDER }}>
+                      <div>
+                        <span style={{ fontSize: 11, color: MUTED }}>Order · </span>
+                        <span style={{ fontSize: 11, color: SUB, fontFamily: 'monospace' }}>{orderId.slice(0, 20)}…</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, color: MUTED }}>{ago(items[0].order_date)}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>{$$(items[0].order_total_cents / 100, 2)}</span>
+                      </div>
+                    </div>
+                    {/* Line items with album art */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {items.map((item, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', borderTop: idx > 0 ? '1px solid ' + BORDER : 'none' }}>
+                          {/* Album art */}
+                          <div style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 6, overflow: 'hidden', background: CARD2, border: '1px solid ' + BORDER, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {item.cover_url ? (
+                              <img src={item.cover_url} alt="cover" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <span style={{ fontSize: 22 }}>🎵</span>
+                            )}
+                          </div>
+                          {/* Item details */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.item_name}</div>
+                            {item.artist_name && (
+                              <div style={{ fontSize: 11, color: accent, marginTop: 1, fontWeight: 500 }}>{item.artist_name}</div>
+                            )}
+                            {item.variation_name && item.variation_name !== item.item_name && (
+                              <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>{item.variation_name}</div>
+                            )}
+                          </div>
+                          {/* Price */}
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{$$(item.item_price_cents / 100, 2)}</div>
+                            {item.quantity > 1 && <div style={{ fontSize: 10, color: MUTED }}>qty {item.quantity}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+// ─── Inventory Browser ────────────────────────────────────────────────────────
+
+function AlbumPlaceholder() {
+  return (
+    <div style={{ width: '100%', aspectRatio: '1', background: CARD2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, borderRadius: 6 }}>🎵</div>
+  )
+}
+
+function InventoryBrowser({ items, accent, genreFilter }: { items: InventoryItem[]; accent: string; genreFilter: string | null }) {
+  const [view, setView] = useState<'art' | 'detail'>('art')
+  const [page, setPage] = useState(1)
+  const PER_PAGE = 60
+
+  const filtered = useMemo(() => {
+    if (!genreFilter) return items
+    return items.filter(item =>
+      item.genres.split(', ').some(g => g.trim().toLowerCase() === genreFilter.toLowerCase())
+    )
+  }, [items, genreFilter])
+
+  const totalPages = Math.ceil(filtered.length / PER_PAGE)
+  const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+
+  // Reset page when filter changes
+  useMemo(() => setPage(1), [genreFilter])
+
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 20 }}>
-        <KpiCard label="Total Revenue"    value={$$(totalRev)}                sub="All completed orders" accent={accent} />
-        <KpiCard label="Total Orders"     value={num(totalOrders)}            sub="Last 60 days" accent={accent} />
-        <KpiCard label="Avg Order Value"  value={$$(avgOrder, 2)}             accent={accent} />
-        <KpiCard label="Unique Items Sold" value={num(kpis?.unique_items_sold)} accent={accent} />
-        <KpiCard label="Customers w/ Orders" value={num(kpis?.customer_count)} accent={accent} />
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', background: CARD2, borderRadius: 8, overflow: 'hidden', border: '1px solid ' + BORDER }}>
+          {(['art', 'detail'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)} style={{ padding: '6px 16px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: view === v ? accent : 'transparent', color: view === v ? '#0f0f1a' : MUTED, transition: 'all 0.15s' }}>
+              {v === 'art' ? '🖼 Art View' : '📋 Detail View'}
+            </button>
+          ))}
+        </div>
+        <span style={{ fontSize: 12, color: MUTED }}>
+          {filtered.length} item{filtered.length !== 1 ? 's' : ''}
+          {genreFilter ? ` in "${genreFilter}"` : ' total'}
+        </span>
+        {genreFilter && (
+          <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: accent + '22', color: accent, fontWeight: 600 }}>
+            {genreFilter} ×
+          </span>
+        )}
       </div>
-      <Section title="Daily Revenue — Last 60 Days">
-        <RevenueChart data={sales} color={accent} />
-      </Section>
+
+      {view === 'art' ? (
+        /* Album Art Grid */
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
+          {paged.map(item => (
+            <div key={item.catalog_object_id} style={{ background: CARD, borderRadius: 10, overflow: 'hidden', border: '1px solid ' + BORDER, transition: 'border-color 0.15s' }}>
+              {/* Art */}
+              <div style={{ position: 'relative', aspectRatio: '1' }}>
+                {item.cover_url ? (
+                  <img src={item.cover_url} alt="album cover" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                ) : (
+                  <AlbumPlaceholder />
+                )}
+                {/* Sold badge */}
+                {item.times_sold > 0 && (
+                  <div style={{ position: 'absolute', top: 6, right: 6, background: accent, color: '#0f0f1a', fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 20 }}>
+                    {item.times_sold}× sold
+                  </div>
+                )}
+              </div>
+              {/* Info */}
+              <div style={{ padding: '8px 10px' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: TEXT, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {item.artist_name || item.name}
+                </div>
+                {item.artist_name && item.album_title && (
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.album_title}</div>
+                )}
+                <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                  {item.format && <Chip label={item.format} color={accent} />}
+                  {item.condition && <Chip label={item.condition} color={SUB} />}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* Detail Table */
+        <div style={{ overflowX: 'auto', borderRadius: 8, background: CARD2 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>
+                {['Cover', 'Title / Artist', 'Format', 'Cond', 'Sold', 'Avg Price', 'Revenue'].map(h => (
+                  <th key={h} style={{ padding: '9px 12px', textAlign: 'left', color: MUTED, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', background: CARD2, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {paged.map(item => (
+                <tr key={item.catalog_object_id} style={{ borderTop: '1px solid ' + BORDER }}>
+                  <td style={{ padding: '8px 12px' }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 4, overflow: 'hidden', background: CARD, border: '1px solid ' + BORDER, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {item.cover_url
+                        ? <img src={item.cover_url} alt="cover" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ fontSize: 16 }}>🎵</span>
+                      }
+                    </div>
+                  </td>
+                  <td style={{ padding: '8px 12px', maxWidth: 220 }}>
+                    <div style={{ fontWeight: 600, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.artist_name || item.name}
+                    </div>
+                    {item.album_title && item.artist_name && (
+                      <div style={{ fontSize: 10, color: MUTED, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.album_title}</div>
+                    )}
+                  </td>
+                  <td style={{ padding: '8px 12px', color: SUB }}>{item.format ?? '—'}</td>
+                  <td style={{ padding: '8px 12px', color: SUB }}>{item.condition ?? '—'}</td>
+                  <td style={{ padding: '8px 12px', color: item.times_sold > 0 ? accent : MUTED, fontWeight: item.times_sold > 0 ? 700 : 400 }}>{item.times_sold}</td>
+                  <td style={{ padding: '8px 12px', color: TEXT }}>{item.avg_price_cents > 0 ? $$(item.avg_price_cents / 100, 2) : '—'}</td>
+                  <td style={{ padding: '8px 12px', color: item.revenue_cents > 0 ? accent : MUTED, fontWeight: 600 }}>{item.revenue_cents > 0 ? $$(item.revenue_cents / 100) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 18, alignItems: 'center' }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ padding: '5px 14px', border: '1px solid ' + BORDER, borderRadius: 6, background: 'transparent', color: page === 1 ? MUTED : TEXT, cursor: page === 1 ? 'default' : 'pointer', fontSize: 12 }}>← Prev</button>
+          <span style={{ color: MUTED, fontSize: 12 }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ padding: '5px 14px', border: '1px solid ' + BORDER, borderRadius: 6, background: 'transparent', color: page === totalPages ? MUTED : TEXT, cursor: page === totalPages ? 'default' : 'pointer', fontSize: 12 }}>Next →</button>
+        </div>
+      )}
     </div>
   )
 }
 
-function AlanCustomers({ customers, stats, accent }: { customers: Customer[]; stats: CustomerStats | null; accent: string }) {
+// ─── ALAN Dashboard ───────────────────────────────────────────────────────────
+
+function AlanOverview({ kpis, sales, dow, accent }: { kpis: SquareKpis | null; sales: SalesByDate[]; dow: SalesByDow[]; accent: string }) {
+  const totalRev    = kpis ? kpis.total_sales_cents / 100 : 0
+  const totalOrders = sales.reduce((s, d) => s + d.order_count, 0)
+  const avgOrder    = totalOrders > 0 ? totalRev / totalOrders : 0
+  const totalUniq   = sales.reduce((s, d) => Math.max(s, d.unique_customers ?? 0), 0)
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 20 }}>
+        <KpiCard label="Total Revenue"       value={$$(totalRev)}                  sub="All completed orders" accent={accent} />
+        <KpiCard label="Total Orders"        value={num(totalOrders)}              sub="Last 60 days"         accent={accent} />
+        <KpiCard label="Avg Order Value"     value={$$(avgOrder, 2)}               accent={accent} />
+        <KpiCard label="Unique Items Sold"   value={num(kpis?.unique_items_sold)}  accent={accent} />
+        <KpiCard label="Customers w/ Orders" value={num(kpis?.customer_count)}     accent={accent} />
+      </div>
+
+      <Section title="Daily Revenue — Last 60 Days">
+        <RevenueChart data={sales} color={accent} />
+      </Section>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
+        <Section title="Unique Customers — Last 60 Days">
+          <div style={{ color: MUTED, fontSize: 11, marginBottom: 8 }}>
+            Orders with linked customer IDs · {totalUniq} peak/day
+          </div>
+          <UniqueCustomersChart data={sales} color={accent} />
+        </Section>
+
+        <Section title="Sales by Day of Week">
+          <DowChart data={dow} color={accent} />
+        </Section>
+      </div>
+    </div>
+  )
+}
+
+function AlanCustomers({ customers, stats, accent, orderHistory }: { customers: Customer[]; stats: CustomerStats | null; accent: string; orderHistory: CustomerOrderItem[] }) {
+  // Index orders by customer_id for fast lookup
+  const ordersByCustomer = useMemo(() => {
+    const map = new Map<string, CustomerOrderItem[]>()
+    orderHistory.forEach(o => {
+      if (!map.has(o.customer_id)) map.set(o.customer_id, [])
+      map.get(o.customer_id)!.push(o)
+    })
+    return map
+  }, [orderHistory])
+
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 20 }}>
-        <KpiCard label="Customers w/ Orders"   value={num(stats?.total_customers)} accent={accent} />
-        <KpiCard label="Total Linked Orders"   value={num(stats?.total_orders)} accent={accent} />
-        <KpiCard label="Avg Spend / Customer"  value={$$(stats?.avg_spend_per_customer, 2)} accent={accent} />
+        <KpiCard label="Customers w/ Orders"   value={num(stats?.total_customers)}           accent={accent} />
+        <KpiCard label="Total Linked Orders"   value={num(stats?.total_orders)}              accent={accent} />
+        <KpiCard label="Avg Spend / Customer"  value={$$(stats?.avg_spend_per_customer, 2)}  accent={accent} />
         <KpiCard label="Avg Orders / Customer" value={stats?.avg_orders_per_customer?.toFixed(1) ?? '—'} accent={accent} />
       </div>
-      <Section title="Top Customers — All-Time Spend">
+
+      <Section title="Top Customers — All-Time Spend (click to expand order history)">
         <div style={{ overflowX: 'auto', borderRadius: 8, background: CARD2 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr>
-                {['#', 'Customer', 'Orders', 'Total Spend'].map(h => (
+                {['#', 'Customer', 'Orders', 'Total Spend', 'History', ''].map(h => (
                   <th key={h} style={{ padding: '9px 12px', textAlign: 'left', color: MUTED, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {customers.map((c, i) => (
-                <tr key={c.customer_id} style={{ borderTop: '1px solid ' + BORDER }}>
-                  <td style={{ padding: '9px 12px', color: i < 3 ? accent : MUTED, fontWeight: 700 }}>{i + 1}</td>
-                  <td style={{ padding: '9px 12px' }}>
-                    <div style={{ fontWeight: 600 }}>{c.full_name}</div>
-                    <div style={{ fontSize: 11, color: MUTED, fontFamily: 'monospace' }}>{c.customer_id}</div>
-                  </td>
-                  <td style={{ padding: '9px 12px' }}>{num(c.order_count)}</td>
-                  <td style={{ padding: '9px 12px', fontWeight: 700, color: accent }}>{$$(c.total_spend, 2)}</td>
-                </tr>
+                <CustomerRow
+                  key={c.customer_id}
+                  c={c}
+                  rank={i}
+                  accent={accent}
+                  orders={ordersByCustomer.get(c.customer_id) ?? []}
+                />
               ))}
             </tbody>
           </table>
         </div>
         <p style={{ color: MUTED, fontSize: 11, marginTop: 10 }}>
-          * Customer names/emails not yet synced — customer details table is empty. Only order-linked IDs available.
+          * Customer names/emails not yet synced — customer details table is empty. Only order-linked IDs shown.
         </p>
       </Section>
     </div>
   )
 }
 
-function AlanInventoryMix({ genres, accent }: { genres: GenreRow[]; accent: string }) {
+function AlanInventoryMix({ genres, inventoryItems, accent }: { genres: GenreRow[]; inventoryItems: InventoryItem[]; accent: string }) {
+  const [selectedGenre, setSelectedGenre] = useState<string | null>(null)
   const top = genres.slice(0, 20)
+
+  function handleGenreClick(label: string) {
+    setSelectedGenre(g => g === label ? null : label)
+  }
+
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 20 }}>
-        <KpiCard label="Genres Tracked"  value={String(genres.length)} accent={accent} />
-        <KpiCard label="Units Sold"       value={num(genres.reduce((s, g) => s + g.times_sold, 0))} accent={accent} />
-        <KpiCard label="Genre Revenue"    value={$$(genres.reduce((s, g) => s + g.revenue_cents, 0) / 100)} accent={accent} />
-        <KpiCard label="Top Genre"        value={genres[0]?.genre ?? '—'} accent={accent} />
+        <KpiCard label="Genres Tracked" value={String(genres.length)}                                                  accent={accent} />
+        <KpiCard label="Units Sold"      value={num(genres.reduce((s, g) => s + g.times_sold, 0))}                     accent={accent} />
+        <KpiCard label="Genre Revenue"   value={$$(genres.reduce((s, g) => s + g.revenue_cents, 0) / 100)}             accent={accent} />
+        <KpiCard label="Top Genre"       value={genres[0]?.genre ?? '—'}                                               accent={accent} />
+        <KpiCard label="Items in Catalog" value={num(inventoryItems[0]?.total_count ?? inventoryItems.length)}         accent={accent} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
-        <Section title="Units Sold by Genre (Top 20)">
-          <BarChart rows={top.map(g => ({ label: g.genre, value: g.times_sold }))} color={accent} />
+
+      {/* Genre Charts (clickable to filter) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 20 }}>
+        <Section
+          title="Units Sold by Genre (Top 20)"
+          action={selectedGenre ? <button onClick={() => setSelectedGenre(null)} style={{ fontSize: 10, padding: '2px 8px', border: '1px solid ' + BORDER, borderRadius: 20, background: 'transparent', color: MUTED, cursor: 'pointer' }}>Clear filter</button> : undefined}
+        >
+          <div style={{ fontSize: 10, color: MUTED, marginBottom: 8 }}>Click a genre to filter the inventory below</div>
+          <BarChart
+            rows={top.map(g => ({ label: g.genre, value: g.times_sold }))}
+            color={accent}
+            onClickRow={handleGenreClick}
+            selectedLabel={selectedGenre}
+          />
         </Section>
         <Section title="Revenue by Genre (Top 20)">
-          <BarChart rows={top.map(g => ({ label: g.genre, value: Math.round(g.revenue_cents / 100) }))} color={accent} />
+          <div style={{ fontSize: 10, color: MUTED, marginBottom: 8 }}>Total revenue generated per genre</div>
+          <BarChart
+            rows={top.map(g => ({ label: g.genre, value: Math.round(g.revenue_cents / 100) }))}
+            color={accent}
+            onClickRow={handleGenreClick}
+            selectedLabel={selectedGenre}
+          />
         </Section>
       </div>
-      <div style={{ background: accent + '11', border: '1px solid ' + accent + '33', borderRadius: 10, padding: '12px 16px' }}>
+
+      {/* Inventory Browser */}
+      <Section
+        title={'Inventory Browser' + (selectedGenre ? ' — ' + selectedGenre : ' — All Items')}
+        action={selectedGenre ? (
+          <button onClick={() => setSelectedGenre(null)} style={{ fontSize: 11, padding: '3px 10px', border: '1px solid ' + accent + '44', borderRadius: 20, background: accent + '15', color: accent, cursor: 'pointer', fontWeight: 600 }}>
+            ✕ Clear "{selectedGenre}"
+          </button>
+        ) : undefined}
+      >
+        <InventoryBrowser items={inventoryItems} accent={accent} genreFilter={selectedGenre} />
+      </Section>
+
+      <div style={{ background: accent + '11', border: '1px solid ' + accent + '33', borderRadius: 10, padding: '12px 16px', marginTop: 18 }}>
         <strong style={{ color: accent, fontSize: 13 }}>💡 Genre Targets</strong>
         <p style={{ color: SUB, fontSize: 12, margin: '6px 0 0', lineHeight: 1.6 }}>
-          Define target % per genre and we'll show actual vs. target with over/under alerts automatically.
+          Define target % per genre and we&apos;ll show actual vs. target with over/under alerts automatically.
         </p>
       </div>
     </div>
@@ -428,10 +855,10 @@ function AlanInventoryMix({ genres, accent }: { genres: GenreRow[]; accent: stri
 }
 
 function AlanWhatsWorking({ kpis, genres, sales, igSummary, fbSummary, accent }: { kpis: SquareKpis | null; genres: GenreRow[]; sales: SalesByDate[]; igSummary: IgSummary | null; fbSummary: FbSummary | null; accent: string }) {
-  const igEngRate = igSummary ? ((igSummary.avg_engagement / Math.max(igSummary.followers, 1)) * 100).toFixed(2) : null
-  const recentRev = sales.slice(-7).reduce((s, d) => s + d.total_money_cents, 0) / 100
-  const prevRev   = sales.slice(-14, -7).reduce((s, d) => s + d.total_money_cents, 0) / 100
-  const revTrend  = prevRev > 0 ? ((recentRev - prevRev) / prevRev * 100).toFixed(1) : null
+  const igEngRate  = igSummary ? ((igSummary.avg_engagement / Math.max(igSummary.followers, 1)) * 100).toFixed(2) : null
+  const recentRev  = sales.slice(-7).reduce((s, d) => s + d.total_money_cents, 0) / 100
+  const prevRev    = sales.slice(-14, -7).reduce((s, d) => s + d.total_money_cents, 0) / 100
+  const revTrend   = prevRev > 0 ? ((recentRev - prevRev) / prevRev * 100).toFixed(1) : null
 
   const wins = [
     genres[0] && genres[0].genre + ' is your top-selling genre with ' + num(genres[0].times_sold) + ' units sold',
@@ -451,7 +878,7 @@ function AlanWhatsWorking({ kpis, genres, sales, igSummary, fbSummary, accent }:
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 20 }}>
         <div>
-          <div style={{ color: '#10b981', fontWeight: 700, fontSize: 14, marginBottom: 12 }}>✅ What's Working</div>
+          <div style={{ color: '#10b981', fontWeight: 700, fontSize: 14, marginBottom: 12 }}>✅ What&apos;s Working</div>
           {wins.map((w, i) => <div key={i} style={{ background: CARD, borderLeft: '3px solid #10b981', borderRadius: 8, padding: '10px 14px', marginBottom: 10, fontSize: 13, color: TEXT, lineHeight: 1.5 }}>{w}</div>)}
           {wins.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>No data available</div>}
         </div>
@@ -550,8 +977,8 @@ function BradEvents() {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
         {[
           { l: 'Option A', d: 'Manual entry form → Supabase events table', c: '#10b981' },
-          { l: 'Option B', d: 'Square Events API (if Dead Wax uses it)', c: '#f59e0b' },
-          { l: 'Option C', d: 'Facebook Events RSVPs via API', c: '#3b82f6' },
+          { l: 'Option B', d: 'Square Events API (if Dead Wax uses it)',    c: '#f59e0b' },
+          { l: 'Option C', d: 'Facebook Events RSVPs via API',              c: '#3b82f6' },
         ].map(o => (
           <div key={o.l} style={{ background: CARD2, border: '1px solid ' + o.c + '44', borderRadius: 10, padding: '12px 16px', minWidth: 180, maxWidth: 220, textAlign: 'left' }}>
             <div style={{ color: o.c, fontWeight: 700, fontSize: 12, marginBottom: 4 }}>{o.l}</div>
@@ -576,12 +1003,12 @@ function SamPlatforms({ igSummary, igPosts, igReach, fbSummary, fbPosts, accent 
         <div style={{ background: CARD, borderRadius: 12, padding: '20px', borderTop: '3px solid #e1306c' }}>
           <div style={{ fontWeight: 700, color: '#e1306c', fontSize: 14, marginBottom: 14 }}>📸 Instagram @{igSummary?.username ?? 'deadwaxrecords'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-            <KpiCard label="Followers"      value={num(igSummary?.followers)} accent="#e1306c" />
-            <KpiCard label="Avg Likes/Post" value={Number(igSummary?.avg_likes ?? 0).toFixed(0)} accent="#e1306c" />
-            <KpiCard label="Avg Comments"   value={Number(igSummary?.avg_comments ?? 0).toFixed(0)} accent="#e1306c" />
-            <KpiCard label="Avg Saves"      value={Number(igSummary?.avg_saves ?? 0).toFixed(0)} accent="#e1306c" />
-            <KpiCard label="Eng Rate"       value={igEngRate + '%'} accent="#e1306c" />
-            <KpiCard label="Top Post Likes" value={num(igSummary?.top_post_likes)} accent="#e1306c" />
+            <KpiCard label="Followers"      value={num(igSummary?.followers)}                              accent="#e1306c" />
+            <KpiCard label="Avg Likes/Post" value={Number(igSummary?.avg_likes ?? 0).toFixed(0)}          accent="#e1306c" />
+            <KpiCard label="Avg Comments"   value={Number(igSummary?.avg_comments ?? 0).toFixed(0)}       accent="#e1306c" />
+            <KpiCard label="Avg Saves"      value={Number(igSummary?.avg_saves ?? 0).toFixed(0)}          accent="#e1306c" />
+            <KpiCard label="Eng Rate"       value={igEngRate + '%'}                                        accent="#e1306c" />
+            <KpiCard label="Top Post Likes" value={num(igSummary?.top_post_likes)}                        accent="#e1306c" />
           </div>
           <div style={{ color: MUTED, fontSize: 11, marginBottom: 6 }}>LIKES TREND (chronological)</div>
           <Sparkline data={igLikes} color="#e1306c" width={280} height={52} />
@@ -589,12 +1016,12 @@ function SamPlatforms({ igSummary, igPosts, igReach, fbSummary, fbPosts, accent 
         <div style={{ background: CARD, borderRadius: 12, padding: '20px', borderTop: '3px solid #1877f2' }}>
           <div style={{ fontWeight: 700, color: '#1877f2', fontSize: 14, marginBottom: 14 }}>👥 Facebook — {fbSummary?.page_name ?? 'Dead Wax Records'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-            <KpiCard label="Page Followers"  value={num(fbSummary?.followers)} accent="#1877f2" />
-            <KpiCard label="Avg Clicks/Post" value={Number(fbSummary?.avg_clicks ?? 0).toFixed(0)} accent="#1877f2" />
-            <KpiCard label="Avg Reach/Post"  value={Number(fbSummary?.avg_reach ?? 0).toFixed(0)} accent="#1877f2" />
-            <KpiCard label="Avg Video Views" value={Number(fbSummary?.avg_video_views ?? 0).toFixed(0)} accent="#1877f2" />
-            <KpiCard label="Star Rating"     value={(fbSummary?.star_rating ?? '—') + ' ⭐'} accent="#1877f2" />
-            <KpiCard label="Posts Tracked"   value={num(fbSummary?.total_posts)} accent="#1877f2" />
+            <KpiCard label="Page Followers"  value={num(fbSummary?.followers)}                            accent="#1877f2" />
+            <KpiCard label="Avg Clicks/Post" value={Number(fbSummary?.avg_clicks ?? 0).toFixed(0)}       accent="#1877f2" />
+            <KpiCard label="Avg Reach/Post"  value={Number(fbSummary?.avg_reach ?? 0).toFixed(0)}        accent="#1877f2" />
+            <KpiCard label="Avg Video Views" value={Number(fbSummary?.avg_video_views ?? 0).toFixed(0)}  accent="#1877f2" />
+            <KpiCard label="Star Rating"     value={(fbSummary?.star_rating ?? '—') + ' ⭐'}             accent="#1877f2" />
+            <KpiCard label="Posts Tracked"   value={num(fbSummary?.total_posts)}                          accent="#1877f2" />
           </div>
           <div style={{ color: MUTED, fontSize: 11, marginBottom: 6 }}>CLICKS TREND (chronological)</div>
           <Sparkline data={fbClicks} color="#1877f2" width={280} height={52} />
@@ -708,13 +1135,17 @@ export default function ManagementDashboardClient({
   squareKpis, squareSalesByDate, squareCatalogByGenre,
   inventoryKpis, inventoryFlatFacts, topCustomers, customerStats,
   igSummary, igPosts, igReachTrend, fbSummary, fbPosts,
+  salesByDow, customerOrderHistory, inventoryItems,
 }: Props) {
-  const [role, setRole] = useState<Role | null>(null)
+  const [role, setRole]       = useState<Role | null>(null)
   const [alanTab, setAlanTab] = useState<AlanTab>('overview')
-  const [bradTab, setBradTab]  = useState<BradTab>('inventory')
-  const [samTab, setSamTab]    = useState<SamTab>('platforms')
+  const [bradTab, setBradTab] = useState<BradTab>('inventory')
+  const [samTab, setSamTab]   = useState<SamTab>('platforms')
   const router = useRouter()
   const accent = role ? ACCENT[role] : '#f59e0b'
+
+  // Suppress unused var warning — inventoryFlatFacts kept for future use
+  void inventoryFlatFacts
 
   return (
     <div style={{ minHeight: '100vh', background: BG, color: TEXT, fontFamily: 'Inter, system-ui, sans-serif', fontSize: 14 }}>
@@ -744,61 +1175,48 @@ export default function ManagementDashboardClient({
             </div>
             <div style={{ color: SUB, marginBottom: 28, fontSize: 14 }}>Who are you? Select your dashboard.</div>
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 860 }}>
-              <RoleCard name="Alan" role="Owner & Founder" description="Revenue, top customers, inventory strategy, and performance signals." accentColor="#f59e0b" onSelect={() => setRole('alan')} />
-              <RoleCard name="Brad" role="Operations & Inventory" description="Inventory health, genre velocity, alerts, events tracker." accentColor="#10b981" onSelect={() => setRole('brad')} />
-              <RoleCard name="Sam" role="Social Media Manager" description="Post tracker, platform analytics, and engagement trends." accentColor="#a855f7" onSelect={() => setRole('sam')} />
+              <RoleCard name="Alan" role="Owner & Founder"         description="Revenue, top customers, inventory strategy, and performance signals." accentColor="#f59e0b" onSelect={() => setRole('alan')} />
+              <RoleCard name="Brad" role="Operations & Inventory"  description="Inventory health, genre velocity, alerts, events tracker."             accentColor="#10b981" onSelect={() => setRole('brad')} />
+              <RoleCard name="Sam"  role="Social Media Manager"    description="Post tracker, platform analytics, and engagement trends."               accentColor="#a855f7" onSelect={() => setRole('sam')} />
             </div>
-            <div style={{ marginTop: 48, color: BORDER, fontSize: 11 }}>Dead Wax Records · Dallas, TX · Lakewood &amp; Deep Ellum · Outlaw Apps v1</div>
           </div>
         )}
 
         {/* Alan */}
         {role === 'alan' && (
-          <div style={{ maxWidth: 1100, margin: '0 auto', paddingTop: 28 }}>
-            <div style={{ marginBottom: 24 }}>
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: accent, margin: 0 }}>Alan's Dashboard</h2>
-              <p style={{ color: MUTED, fontSize: 12, margin: '4px 0 0' }}>Owner &amp; Founder · Revenue, customers, inventory, and performance</p>
+          <div>
+            <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid ' + BORDER, marginBottom: 24, marginTop: 20, overflowX: 'auto' }}>
+              <TabBtn active={alanTab === 'overview'}       onClick={() => setAlanTab('overview')}       accent={accent}>📊 Overview</TabBtn>
+              <TabBtn active={alanTab === 'customers'}      onClick={() => setAlanTab('customers')}      accent={accent}>👥 Customers</TabBtn>
+              <TabBtn active={alanTab === 'inventory-mix'}  onClick={() => setAlanTab('inventory-mix')}  accent={accent}>🎵 Inventory Mix</TabBtn>
+              <TabBtn active={alanTab === 'whats-working'}  onClick={() => setAlanTab('whats-working')}  accent={accent}>✅ What&apos;s Working</TabBtn>
             </div>
-            <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid ' + BORDER, marginBottom: 28, overflowX: 'auto' }}>
-              <TabBtn active={alanTab === 'overview'}      onClick={() => setAlanTab('overview')}      accent={accent}>📊 Overview</TabBtn>
-              <TabBtn active={alanTab === 'customers'}     onClick={() => setAlanTab('customers')}     accent={accent}>👤 Customers</TabBtn>
-              <TabBtn active={alanTab === 'inventory-mix'} onClick={() => setAlanTab('inventory-mix')} accent={accent}>📦 Inventory Mix</TabBtn>
-              <TabBtn active={alanTab === 'whats-working'} onClick={() => setAlanTab('whats-working')} accent={accent}>✅ What's Working</TabBtn>
-            </div>
-            {alanTab === 'overview'      && <AlanOverview kpis={squareKpis} sales={squareSalesByDate} accent={accent} />}
-            {alanTab === 'customers'     && <AlanCustomers customers={topCustomers} stats={customerStats} accent={accent} />}
-            {alanTab === 'inventory-mix' && <AlanInventoryMix genres={squareCatalogByGenre} accent={accent} />}
+            {alanTab === 'overview'      && <AlanOverview kpis={squareKpis} sales={squareSalesByDate} dow={salesByDow} accent={accent} />}
+            {alanTab === 'customers'     && <AlanCustomers customers={topCustomers} stats={customerStats} accent={accent} orderHistory={customerOrderHistory} />}
+            {alanTab === 'inventory-mix' && <AlanInventoryMix genres={squareCatalogByGenre} inventoryItems={inventoryItems} accent={accent} />}
             {alanTab === 'whats-working' && <AlanWhatsWorking kpis={squareKpis} genres={squareCatalogByGenre} sales={squareSalesByDate} igSummary={igSummary} fbSummary={fbSummary} accent={accent} />}
           </div>
         )}
 
         {/* Brad */}
         {role === 'brad' && (
-          <div style={{ maxWidth: 1100, margin: '0 auto', paddingTop: 28 }}>
-            <div style={{ marginBottom: 24 }}>
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: accent, margin: 0 }}>Brad's Dashboard</h2>
-              <p style={{ color: MUTED, fontSize: 12, margin: '4px 0 0' }}>Operations &amp; Inventory · Catalog health, alerts, events</p>
-            </div>
-            <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid ' + BORDER, marginBottom: 28, overflowX: 'auto' }}>
-              <TabBtn active={bradTab === 'inventory'} onClick={() => setBradTab('inventory')} accent={accent}>📦 Inventory</TabBtn>
-              <TabBtn active={bradTab === 'alerts'}    onClick={() => setBradTab('alerts')}    accent={accent}>🚨 Alerts</TabBtn>
+          <div>
+            <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid ' + BORDER, marginBottom: 24, marginTop: 20 }}>
+              <TabBtn active={bradTab === 'inventory'} onClick={() => setBradTab('inventory')} accent={accent}>📦 Inventory Health</TabBtn>
               <TabBtn active={bradTab === 'events'}    onClick={() => setBradTab('events')}    accent={accent}>📅 Events</TabBtn>
+              <TabBtn active={bradTab === 'alerts'}    onClick={() => setBradTab('alerts')}    accent={accent}>🚨 Alerts</TabBtn>
             </div>
             {bradTab === 'inventory' && <BradInventory invKpis={inventoryKpis} genres={squareCatalogByGenre} accent={accent} />}
-            {bradTab === 'alerts'    && <BradAlerts genres={squareCatalogByGenre} accent={accent} />}
             {bradTab === 'events'    && <BradEvents />}
+            {bradTab === 'alerts'    && <BradAlerts genres={squareCatalogByGenre} accent={accent} />}
           </div>
         )}
 
         {/* Sam */}
         {role === 'sam' && (
-          <div style={{ maxWidth: 1200, margin: '0 auto', paddingTop: 28 }}>
-            <div style={{ marginBottom: 24 }}>
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: accent, margin: 0 }}>Sam's Dashboard</h2>
-              <p style={{ color: MUTED, fontSize: 12, margin: '4px 0 0' }}>Social Media Manager · Post tracker and platform analytics</p>
-            </div>
-            <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid ' + BORDER, marginBottom: 28, overflowX: 'auto' }}>
-              <TabBtn active={samTab === 'platforms'}    onClick={() => setSamTab('platforms')}    accent={accent}>📡 Platforms</TabBtn>
+          <div>
+            <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid ' + BORDER, marginBottom: 24, marginTop: 20 }}>
+              <TabBtn active={samTab === 'platforms'}    onClick={() => setSamTab('platforms')}    accent={accent}>📊 Platforms</TabBtn>
               <TabBtn active={samTab === 'post-tracker'} onClick={() => setSamTab('post-tracker')} accent={accent}>📝 Post Tracker</TabBtn>
             </div>
             {samTab === 'platforms'    && <SamPlatforms igSummary={igSummary} igPosts={igPosts} igReach={igReachTrend} fbSummary={fbSummary} fbPosts={fbPosts} accent={accent} />}
