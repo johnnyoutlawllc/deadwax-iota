@@ -148,6 +148,21 @@ interface RarityDistRow {
   avg_score: number
 }
 
+interface TopRareRow {
+  catalog_object_id: string
+  item_name: string
+  artist_name: string | null
+  thumbnail_url: string | null
+  rarity_score: number
+  rarity_label: string
+  discogs_have: string | null
+  discogs_want: string | null
+  lastfm_listeners: number
+  format: string | null
+  condition: string | null
+  times_sold: number
+}
+
 interface PopularityRow {
   catalog_object_id: string
   item_name: string
@@ -178,6 +193,7 @@ interface Props {
   lastfmSample: SourceSampleRow[]
   rarityDistribution: RarityDistRow[]
   popularityLeaderboard: PopularityRow[]
+  topRareItems: TopRareRow[]
   squareKpis: SquareKpis | null
   squareSalesByDate: SalesByDate[]
   squareSalesByFormat: SalesByFormat[]
@@ -2164,6 +2180,114 @@ function EnrichmentPanel({ stats, sample, discogsSample, lastfmSample, rarityDis
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+// ─── Rarity Section (shared between Inventory + Catalog tabs) ────────────────
+
+function RaritySection({ rarityDistribution, topRareItems }: {
+  rarityDistribution: RarityDistRow[]
+  topRareItems: TopRareRow[]
+}) {
+  const RARITY_CFG: Record<string, { bg: string; text: string; border: string; icon: string }> = {
+    'Ultra Rare': { bg: '#78350f', text: '#fde68a', border: '#92400e', icon: '★' },
+    'Rare':       { bg: '#4c1d95', text: '#ddd6fe', border: '#5b21b6', icon: '◆' },
+    'Uncommon':   { bg: '#1e3a5f', text: '#93c5fd', border: '#1e40af', icon: '▲' },
+    'Common':     { bg: '#1f2937', text: '#9ca3af', border: '#374151', icon: '·' },
+  }
+
+  const scoredRows = rarityDistribution.filter(r => r.rarity_label !== 'Unscored')
+  const totalScored = scoredRows.reduce((s, r) => s + Number(r.item_count), 0)
+
+  return (
+    <div className="flex flex-col gap-4 mt-6">
+
+      {/* Distribution cards */}
+      {scoredRows.length > 0 && (
+        <section>
+          <SectionHeader right={`${totalScored.toLocaleString()} scored items`}>Catalog Rarity Distribution</SectionHeader>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {scoredRows.map(row => {
+              const cfg = RARITY_CFG[row.rarity_label] ?? RARITY_CFG['Common']
+              const pct = totalScored > 0 ? ((Number(row.item_count) / totalScored) * 100).toFixed(1) : '0'
+              return (
+                <div key={row.rarity_label} className="rounded-xl border p-4"
+                  style={{ background: '#0d0d0d', borderColor: cfg.border, borderLeftWidth: 3 }}>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span style={{ color: cfg.text, fontSize: 11 }}>{cfg.icon}</span>
+                    <span className="text-xs font-bold uppercase tracking-wider" style={{ color: cfg.text }}>{row.rarity_label}</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white">{Number(row.item_count).toLocaleString()}</div>
+                  <div className="text-xs mt-0.5" style={{ color: '#555' }}>{pct}% · avg score {row.avg_score}</div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Top rare items table */}
+      {topRareItems.length > 0 && (
+        <section>
+          <SectionHeader right={`top ${topRareItems.length} · score ≥ 50`}>Top Rare Records in Catalog</SectionHeader>
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#1e1e1e' }}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: '#111', borderBottom: '1px solid #1e1e1e' }}>
+                  {['#', '', 'Artist / Album', 'Rarity', 'Have', 'Want', 'Listeners', 'Format', 'Sold'].map(h => (
+                    <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: '#555', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {topRareItems.map((row, i) => {
+                  const cfg = RARITY_CFG[row.rarity_label] ?? RARITY_CFG['Common']
+                  return (
+                    <tr key={row.catalog_object_id} style={{ borderTop: '1px solid #1a1a1a', background: i % 2 === 0 ? 'transparent' : '#090909' }}>
+                      <td className="px-3 py-2 text-xs font-bold tabular-nums" style={{ color: i < 3 ? '#f59e0b' : '#333' }}>{i + 1}</td>
+                      <td className="px-2 py-2">
+                        {row.thumbnail_url
+                          ? <img src={row.thumbnail_url} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover', border: '1px solid #222' }} />
+                          : <div style={{ width: 32, height: 32, borderRadius: 4, background: '#1a1a1a', border: '1px solid #222', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>🎵</div>
+                        }
+                      </td>
+                      <td className="px-3 py-2" style={{ maxWidth: 240 }}>
+                        {row.artist_name && (
+                          <div className="text-xs font-bold uppercase tracking-wide" style={{ color: '#ff6b35', fontSize: 10 }}>{row.artist_name}</div>
+                        )}
+                        <div className="text-xs font-medium" style={{ color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>{row.item_name}</div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: cfg.bg, color: cfg.text }}>
+                          {cfg.icon} {row.rarity_score}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs tabular-nums" style={{ color: '#666' }}>
+                        {row.discogs_have ? parseInt(row.discogs_have).toLocaleString() : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs tabular-nums font-semibold" style={{ color: row.discogs_want && parseInt(row.discogs_want) > 50 ? '#f59e0b' : '#666' }}>
+                        {row.discogs_want ? parseInt(row.discogs_want).toLocaleString() : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs tabular-nums" style={{ color: row.lastfm_listeners > 0 ? '#d94343' : '#333' }}>
+                        {row.lastfm_listeners > 0 ? fmtListeners(row.lastfm_listeners) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs" style={{ color: '#666' }}>{row.format ?? '—'}</td>
+                      <td className="px-3 py-2 text-xs font-semibold" style={{ color: row.times_sold > 0 ? '#ff6b35' : '#333' }}>{row.times_sold > 0 ? `${row.times_sold}×` : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {scoredRows.length === 0 && topRareItems.length === 0 && (
+        <div className="rounded-xl border flex items-center justify-center py-8" style={{ borderColor: '#1e1e1e', borderStyle: 'dashed' }}>
+          <span className="text-xs" style={{ color: '#555' }}>Enrichment running — rarity data will appear as Discogs data fills in</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 type Tab = 'square' | 'inventory' | 'instagram' | 'facebook' | 'tiktok' | 'catalog' | 'database' | 'db-overview' | 'enrichment'
 
 export default function DeadWaxClient({
@@ -2171,7 +2295,7 @@ export default function DeadWaxClient({
   instagramMedia, instagramAccount, instagramDemographics,
   facebookPosts, dbStats, columnProfiles, catalogOverview,
   enrichmentStats, enrichmentSample, discogsSample, lastfmSample,
-  rarityDistribution, popularityLeaderboard,
+  rarityDistribution, popularityLeaderboard, topRareItems,
   squareKpis, squareSalesByDate, squareSalesByFormat,
   squareSalesByCondition, squareCatalogByGenre, squareInventoryByYear,
   squareFlatFacts,
@@ -2254,12 +2378,18 @@ export default function DeadWaxClient({
             />
           )}
           {activeTab === 'inventory' && (
-            <InventoryPanel kpis={inventoryKpis} flatFacts={inventoryFlatFacts} />
+            <div>
+              <InventoryPanel kpis={inventoryKpis} flatFacts={inventoryFlatFacts} />
+              <RaritySection rarityDistribution={rarityDistribution} topRareItems={topRareItems} />
+            </div>
           )}
           {activeTab === 'catalog' && (
-            catalogOverview
-              ? <CatalogOverview data={catalogOverview} />
-              : <p className="text-sm text-text-muted">Catalog data unavailable.</p>
+            <div>
+              {catalogOverview
+                ? <CatalogOverview data={catalogOverview} />
+                : <p className="text-sm text-text-muted">Catalog data unavailable.</p>}
+              <RaritySection rarityDistribution={rarityDistribution} topRareItems={topRareItems} />
+            </div>
           )}
           {activeTab === 'instagram' && (
             <InstagramPanel account={instagramAccount} media={instagramMedia} demographics={instagramDemographics} />

@@ -38,6 +38,7 @@ export default async function ChiPage() {
     { data: lastfmSample },
     { data: rarityDistribution },
     { data: popularityLeaderboard },
+    { data: topRareItems },
     { data: squareKpis },
     { data: squareSalesByDate },
     { data: squareSalesByFormat },
@@ -84,6 +85,7 @@ export default async function ChiPage() {
     supabase.rpc('get_enrichment_sample_by_source', { p_source: 'lastfm', sample_limit: 25 }),
     supabase.rpc('get_rarity_distribution'),
     supabase.rpc('get_popularity_leaderboard', { p_limit: 25 }),
+    supabase.rpc('get_top_rare_items', { p_limit: 25 }),
     supabase.rpc('get_square_kpis'),
     supabase.rpc('get_square_sales_by_date', { days_back: 60 }),
     supabase.rpc('get_square_sales_by_format'),
@@ -113,6 +115,7 @@ export default async function ChiPage() {
       lastfmSample={lastfmSample ?? []}
       rarityDistribution={rarityDistribution ?? []}
       popularityLeaderboard={popularityLeaderboard ?? []}
+      topRareItems={topRareItems ?? []}
       squareKpis={squareKpis ?? null}
       squareSalesByDate={squareSalesByDate ?? []}
       squareSalesByFormat={squareSalesByFormat ?? []}
