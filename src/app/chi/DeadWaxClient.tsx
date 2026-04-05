@@ -142,6 +142,25 @@ interface InventoryByYear {
   revenue_cents: number
 }
 
+interface RarityDistRow {
+  rarity_label: string
+  item_count: number
+  avg_score: number
+}
+
+interface PopularityRow {
+  catalog_object_id: string
+  item_name: string
+  artist_name: string | null
+  thumbnail_url: string | null
+  lastfm_listeners: number
+  lastfm_playcount: number
+  lastfm_artist_listeners: number
+  rarity_score: number | null
+  rarity_label: string | null
+  genres: string | null
+}
+
 interface Props {
   squareSummary: SquareSummary | null
   squareTopItems: TopItem[]
@@ -157,6 +176,8 @@ interface Props {
   enrichmentSample: EnrichmentSample[]
   discogsSample: SourceSampleRow[]
   lastfmSample: SourceSampleRow[]
+  rarityDistribution: RarityDistRow[]
+  popularityLeaderboard: PopularityRow[]
   squareKpis: SquareKpis | null
   squareSalesByDate: SalesByDate[]
   squareSalesByFormat: SalesByFormat[]
@@ -1733,11 +1754,20 @@ interface EnrichmentSample {
   source_url:        string | null
 }
 
-function EnrichmentPanel({ stats, sample, discogsSample, lastfmSample }: {
+function fmtListeners(n: number | null | undefined): string {
+  if (n == null || n === 0) return '—'
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 1_000)     return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K'
+  return String(n)
+}
+
+function EnrichmentPanel({ stats, sample, discogsSample, lastfmSample, rarityDistribution, popularityLeaderboard }: {
   stats: EnrichmentStats | null
   sample: EnrichmentSample[]
   discogsSample: SourceSampleRow[]
   lastfmSample: SourceSampleRow[]
+  rarityDistribution: RarityDistRow[]
+  popularityLeaderboard: PopularityRow[]
 }) {
   const factTypes = stats?.fact_type_counts
     ? Object.entries(stats.fact_type_counts).sort((a, b) => b[1] - a[1])
@@ -1754,6 +1784,14 @@ function EnrichmentPanel({ stats, sample, discogsSample, lastfmSample }: {
     lastfm:          '#d94343',
   }
 
+  const rarityConfig: Record<string, { bg: string; text: string; icon: string }> = {
+    'Ultra Rare': { bg: '#78350f', text: '#fde68a', icon: '★' },
+    'Rare':       { bg: '#4c1d95', text: '#ddd6fe', icon: '◆' },
+    'Uncommon':   { bg: '#1e3a5f', text: '#93c5fd', icon: '▲' },
+    'Common':     { bg: '#1f2937', text: '#9ca3af', icon: '·' },
+    'Unscored':   { bg: '#111827', text: '#6b7280', icon: '' },
+  }
+
   return (
     <div className="flex flex-col gap-6">
 
@@ -1764,6 +1802,101 @@ function EnrichmentPanel({ stats, sample, discogsSample, lastfmSample }: {
         <StatCard label="Total Facts"     value={stats?.total_facts?.toLocaleString() ?? '—'} sub="rows in enrichment table" />
         <StatCard label="With Cover Art"  value={stats?.with_cover_art?.toLocaleString() ?? '—'} sub="from Discogs + CoverArt" />
       </div>
+
+      {/* Rarity distribution */}
+      {rarityDistribution.length > 0 && (
+        <section>
+          <SectionHeader>Catalog Rarity Distribution</SectionHeader>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {rarityDistribution.filter(r => r.rarity_label !== 'Unscored').map(row => {
+              const cfg = rarityConfig[row.rarity_label] ?? rarityConfig['Common']
+              return (
+                <div key={row.rarity_label} className="rounded-xl border border-border p-4" style={{ borderLeftWidth: 3, borderLeftColor: cfg.bg === '#1f2937' ? '#374151' : cfg.bg }}>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    {cfg.icon && <span style={{ color: cfg.text, fontSize: 11 }}>{cfg.icon}</span>}
+                    <div className="text-xs font-bold uppercase tracking-wider" style={{ color: cfg.text }}>{row.rarity_label}</div>
+                  </div>
+                  <div className="text-2xl font-bold text-text-primary">{Number(row.item_count).toLocaleString()}</div>
+                  <div className="text-xs text-text-muted mt-0.5">items · avg score {row.avg_score}</div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Popularity leaderboard */}
+      {popularityLeaderboard.length > 0 && (
+        <section>
+          <SectionHeader right={`top ${popularityLeaderboard.length} by Last.fm listeners`}>
+            <span style={{ color: '#d94343' }}>Last.fm</span> — Popularity Leaderboard
+          </SectionHeader>
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface border-b border-border">
+                  <th className="text-left px-3 py-2.5 font-medium text-text-muted w-8">#</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted w-8" />
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted">Album</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-text-muted">Listeners</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-text-muted hidden md:table-cell">Plays</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden lg:table-cell">Rarity</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-text-muted hidden xl:table-cell">Genres</th>
+                </tr>
+              </thead>
+              <tbody>
+                {popularityLeaderboard.map((row, i) => {
+                  const cfg = row.rarity_label ? (rarityConfig[row.rarity_label] ?? rarityConfig['Common']) : null
+                  return (
+                    <tr key={row.catalog_object_id} className={`border-b border-border last:border-0 ${i % 2 === 0 ? 'bg-background' : 'bg-surface'}`}>
+                      <td className="px-3 py-2 text-xs font-bold tabular-nums" style={{ color: i < 3 ? '#f59e0b' : '#555' }}>{i + 1}</td>
+                      <td className="px-2 py-2">
+                        {row.thumbnail_url ? (
+                          <img src={row.thumbnail_url} alt="" className="w-8 h-8 rounded object-cover" style={{ border: '1px solid #222' }} />
+                        ) : (
+                          <div className="w-8 h-8 rounded flex items-center justify-center" style={{ background: '#1a1a1a', border: '1px solid #222' }}>
+                            <span style={{ fontSize: 12 }}>🎵</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {row.artist_name && (
+                          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#ff6b35', fontSize: 10 }}>{row.artist_name}</div>
+                        )}
+                        <div className="text-xs font-medium text-text-primary leading-tight" style={{ maxWidth: 260 }}>{row.item_name}</div>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <span className="font-bold tabular-nums text-sm" style={{ color: '#d94343' }}>{fmtListeners(row.lastfm_listeners)}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right hidden md:table-cell text-xs text-text-muted tabular-nums">
+                        {fmtListeners(row.lastfm_playcount)}
+                      </td>
+                      <td className="px-4 py-2.5 hidden lg:table-cell">
+                        {cfg && row.rarity_label && (row.rarity_score ?? 0) >= 25 ? (
+                          <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: cfg.bg, color: cfg.text }}>
+                            {cfg.icon} {row.rarity_label}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-text-muted">{row.rarity_score ?? '—'}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 hidden xl:table-cell">
+                        {row.genres ? (
+                          <div className="flex gap-1 flex-wrap">
+                            {row.genres.split(', ').slice(0, 2).map(g => (
+                              <span key={g} className="text-xs px-1.5 py-0.5 rounded" style={{ background: '#1a0d0d', color: '#d94343', fontSize: 10 }}>{g}</span>
+                            ))}
+                          </div>
+                        ) : <span className="text-text-muted text-xs">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* Source breakdown cards */}
       {sources.length > 0 && (
@@ -2038,6 +2171,7 @@ export default function DeadWaxClient({
   instagramMedia, instagramAccount, instagramDemographics,
   facebookPosts, dbStats, columnProfiles, catalogOverview,
   enrichmentStats, enrichmentSample, discogsSample, lastfmSample,
+  rarityDistribution, popularityLeaderboard,
   squareKpis, squareSalesByDate, squareSalesByFormat,
   squareSalesByCondition, squareCatalogByGenre, squareInventoryByYear,
   squareFlatFacts,
@@ -2150,7 +2284,14 @@ export default function DeadWaxClient({
             />
           )}
           {activeTab === 'enrichment' && (
-            <EnrichmentPanel stats={enrichmentStats} sample={enrichmentSample} discogsSample={discogsSample} lastfmSample={lastfmSample} />
+            <EnrichmentPanel
+              stats={enrichmentStats}
+              sample={enrichmentSample}
+              discogsSample={discogsSample}
+              lastfmSample={lastfmSample}
+              rarityDistribution={rarityDistribution}
+              popularityLeaderboard={popularityLeaderboard}
+            />
           )}
         </section>
 

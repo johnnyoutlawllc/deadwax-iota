@@ -36,6 +36,8 @@ export default async function ChiPage() {
     { data: enrichmentSample },
     { data: discogsSample },
     { data: lastfmSample },
+    { data: rarityDistribution },
+    { data: popularityLeaderboard },
     { data: squareKpis },
     { data: squareSalesByDate },
     { data: squareSalesByFormat },
@@ -80,6 +82,8 @@ export default async function ChiPage() {
     supabase.rpc('get_enrichment_sample', { sample_limit: 50 }),
     supabase.rpc('get_enrichment_sample_by_source', { p_source: 'discogs', sample_limit: 25 }),
     supabase.rpc('get_enrichment_sample_by_source', { p_source: 'lastfm', sample_limit: 25 }),
+    supabase.rpc('get_rarity_distribution'),
+    supabase.rpc('get_popularity_leaderboard', { p_limit: 25 }),
     supabase.rpc('get_square_kpis'),
     supabase.rpc('get_square_sales_by_date', { days_back: 60 }),
     supabase.rpc('get_square_sales_by_format'),
@@ -107,6 +111,8 @@ export default async function ChiPage() {
       enrichmentSample={enrichmentSample ?? []}
       discogsSample={discogsSample ?? []}
       lastfmSample={lastfmSample ?? []}
+      rarityDistribution={rarityDistribution ?? []}
+      popularityLeaderboard={popularityLeaderboard ?? []}
       squareKpis={squareKpis ?? null}
       squareSalesByDate={squareSalesByDate ?? []}
       squareSalesByFormat={squareSalesByFormat ?? []}

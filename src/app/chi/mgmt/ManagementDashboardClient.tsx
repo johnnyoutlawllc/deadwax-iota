@@ -75,6 +75,11 @@ interface InventoryItem {
   artist_name: string
   album_title: string
   genres: string
+  rarity_score: number | null
+  rarity_label: string | null
+  is_rare: boolean | null
+  lastfm_listeners: number | null
+  lastfm_artist_listeners: number | null
   total_count: number
 }
 interface IgSummary {
@@ -123,6 +128,13 @@ const $$ = (n: number | null | undefined, dec = 0) =>
 
 const num = (n: number | null | undefined) =>
   n == null ? '—' : Number(n).toLocaleString('en-US')
+
+function fmtListeners(n: number | null | undefined): string {
+  if (n == null || n === 0) return '—'
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 1_000)     return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K'
+  return String(n)
+}
 
 function ago(iso: string) {
   const d = new Date(iso)
@@ -640,6 +652,29 @@ function InventoryBrowser({
                     {item.times_sold}× sold
                   </div>
                 )}
+                {/* Rarity badge */}
+                {item.rarity_label && (item.rarity_score ?? 0) >= 50 && (
+                  <div style={{
+                    position: 'absolute', bottom: 6, left: 6,
+                    background: item.rarity_label === 'Ultra Rare' ? '#78350f' : '#4c1d95',
+                    color: item.rarity_label === 'Ultra Rare' ? '#fde68a' : '#ddd6fe',
+                    fontSize: 8, fontWeight: 800, padding: '2px 7px', borderRadius: 10,
+                    letterSpacing: '0.07em', textTransform: 'uppercase',
+                  }}>
+                    {item.rarity_label === 'Ultra Rare' ? '★ ULTRA RARE' : '◆ RARE'}
+                  </div>
+                )}
+                {/* Popularity pill */}
+                {(item.lastfm_listeners ?? 0) >= 50000 && (
+                  <div style={{
+                    position: 'absolute', bottom: 6, right: 6,
+                    background: 'rgba(217,67,67,0.85)',
+                    color: '#fff',
+                    fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 8,
+                  }}>
+                    {fmtListeners(item.lastfm_listeners)}
+                  </div>
+                )}
               </div>
               {/* Info */}
               <div style={{ padding: '8px 10px' }}>
@@ -663,7 +698,7 @@ function InventoryBrowser({
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr>
-                {['Cover', 'Title / Artist', 'Format', 'Cond', 'Sold', 'Avg Price', 'Revenue'].map(h => (
+                {['Cover', 'Title / Artist', 'Format', 'Cond', 'Rarity', 'Listeners', 'Sold', 'Avg Price', 'Revenue'].map(h => (
                   <th key={h} style={{ padding: '9px 12px', textAlign: 'left', color: MUTED, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', background: CARD2, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -689,6 +724,25 @@ function InventoryBrowser({
                   </td>
                   <td style={{ padding: '8px 12px', color: SUB }}>{item.format ?? '—'}</td>
                   <td style={{ padding: '8px 12px', color: SUB }}>{item.condition ?? '—'}</td>
+                  {/* Rarity */}
+                  <td style={{ padding: '8px 12px' }}>
+                    {item.rarity_label && (item.rarity_score ?? 0) >= 25 ? (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, whiteSpace: 'nowrap',
+                        background: item.rarity_label === 'Ultra Rare' ? '#78350f' : item.rarity_label === 'Rare' ? '#4c1d95' : '#1e3a5f',
+                        color:      item.rarity_label === 'Ultra Rare' ? '#fde68a' : item.rarity_label === 'Rare' ? '#ddd6fe' : '#93c5fd',
+                      }}>
+                        {item.rarity_label === 'Ultra Rare' ? '★ Ultra Rare' : item.rarity_label === 'Rare' ? '◆ Rare' : 'Uncommon'}
+                        {item.rarity_score != null && <span style={{ opacity: 0.7, marginLeft: 4 }}>·{item.rarity_score}</span>}
+                      </span>
+                    ) : (
+                      <span style={{ color: MUTED, fontSize: 11 }}>{item.rarity_score != null ? item.rarity_score : '—'}</span>
+                    )}
+                  </td>
+                  {/* Listeners */}
+                  <td style={{ padding: '8px 12px', color: (item.lastfm_listeners ?? 0) > 0 ? '#d94343' : MUTED, fontWeight: (item.lastfm_listeners ?? 0) > 100000 ? 700 : 400, fontSize: 11 }}>
+                    {(item.lastfm_listeners ?? 0) > 0 ? fmtListeners(item.lastfm_listeners) : '—'}
+                  </td>
                   <td style={{ padding: '8px 12px', color: item.times_sold > 0 ? accent : MUTED, fontWeight: item.times_sold > 0 ? 700 : 400 }}>{item.times_sold}</td>
                   <td style={{ padding: '8px 12px', color: TEXT }}>{item.avg_price_cents > 0 ? $$(item.avg_price_cents / 100, 2) : '—'}</td>
                   <td style={{ padding: '8px 12px', color: item.revenue_cents > 0 ? accent : MUTED, fontWeight: 600 }}>{item.revenue_cents > 0 ? $$(item.revenue_cents / 100) : '—'}</td>
