@@ -48,9 +48,19 @@ interface ShopItem {
   discogs_rating:    string | null
   discogs_have:      string | null
   discogs_want:      string | null
+  discogs_year:      string | null
   styles:            string | null
   lastfm_genres:     string | null
+  genres:            string | null
   cover_url:         string | null
+  // Rarity
+  rarity_score:      number | null
+  rarity_label:      string | null
+  is_rare:           boolean | null
+  // Popularity
+  lastfm_listeners:         string | null
+  lastfm_playcount:         string | null
+  lastfm_artist_listeners:  string | null
 }
 
 interface CartItem extends ShopItem { quantity: number }
@@ -154,6 +164,33 @@ function FormatBadge({ format }: { format: string | null }) {
   )
 }
 
+// ─── Rarity Badge ─────────────────────────────────────────────────────────────
+function RarityBadge({ label, score }: { label: string | null; score: number | null }) {
+  if (!label || !score || score < 50) return null
+  const isUltra = label === 'Ultra Rare'
+  return (
+    <div style={{
+      position: 'absolute', bottom: 7, left: 7,
+      background: isUltra ? '#b45309' : '#6d28d9',
+      color: isUltra ? '#fef3c7' : '#ede9fe',
+      fontSize: 8, fontWeight: 800, padding: '2px 7px', borderRadius: 10,
+      letterSpacing: '0.08em', textTransform: 'uppercase',
+      boxShadow: `0 1px 4px rgba(0,0,0,0.5)`,
+    }}>
+      {isUltra ? '★ ULTRA RARE' : '◆ RARE'}
+    </div>
+  )
+}
+
+// ─── Listener count formatter ─────────────────────────────────────────────────
+function fmtListeners(val: string | null): string | null {
+  const n = parseInt(val || '0', 10)
+  if (!n) return null
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`
+  return String(n)
+}
+
 // ─── Item Card (grid view) ────────────────────────────────────────────────────
 function ItemCard({ item, onClick, inCart }: { item: ShopItem; onClick: () => void; inCart: boolean }) {
   const [imgErr, setImgErr] = useState(false)
@@ -190,6 +227,7 @@ function ItemCard({ item, onClick, inCart }: { item: ShopItem; onClick: () => vo
         {inCart && (
           <div style={{ position: 'absolute', top: 7, left: 7, background: ORANGE, color: '#fff', fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 12 }}>IN CART</div>
         )}
+        <RarityBadge label={item.rarity_label} score={item.rarity_score} />
       </div>
 
       {/* Body */}
@@ -206,6 +244,13 @@ function ItemCard({ item, onClick, inCart }: { item: ShopItem; onClick: () => vo
           <FormatBadge format={item.format} />
           {rating > 0 && <StarRating rating={rating} />}
         </div>
+        {/* Listener count */}
+        {fmtListeners(item.lastfm_listeners) && (
+          <div style={{ color: '#555', fontSize: 9, marginTop: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ color: '#c0392b', fontSize: 8 }}>♫</span>
+            {fmtListeners(item.lastfm_listeners)} listeners
+          </div>
+        )}
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 6 }}>
           <div>
@@ -274,10 +319,35 @@ function ItemModal({ item, onClose, onAdd, inCart }: {
             </div>
           )}
 
+          {/* Rarity + Popularity row */}
+          {(item.rarity_label && (item.rarity_score ?? 0) >= 50 || fmtListeners(item.lastfm_listeners)) && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+              {item.rarity_label && (item.rarity_score ?? 0) >= 50 && (
+                <span style={{
+                  background: item.rarity_label === 'Ultra Rare' ? '#b45309' : '#6d28d9',
+                  color: item.rarity_label === 'Ultra Rare' ? '#fef3c7' : '#ede9fe',
+                  fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 12, letterSpacing: '0.06em',
+                }}>
+                  {item.rarity_label === 'Ultra Rare' ? '★ ' : '◆ '}{item.rarity_label} ({item.rarity_score}/100)
+                </span>
+              )}
+              {fmtListeners(item.lastfm_listeners) && (
+                <span style={{ color: '#888', fontSize: 11 }}>
+                  ♫ {fmtListeners(item.lastfm_listeners)} Last.fm listeners
+                </span>
+              )}
+              {fmtListeners(item.lastfm_artist_listeners) && (
+                <span style={{ color: '#555', fontSize: 10 }}>
+                  · {fmtListeners(item.lastfm_artist_listeners)} artist fans
+                </span>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', marginBottom: 14 }}>
             {item.format && <MetaRow label="Format" value={item.format} />}
             {item.condition && <MetaRow label="Condition" value={item.condition} />}
-            {item.release_year && <MetaRow label="Year" value={String(item.release_year)} />}
+            {(item.release_year || item.discogs_year) && <MetaRow label="Year" value={String(item.discogs_year || item.release_year)} />}
             {item.record_label && <MetaRow label="Label" value={item.record_label} />}
             {item.release_type && <MetaRow label="Type" value={item.release_type} />}
             {item.genre && <MetaRow label="Genre" value={item.genre} />}
@@ -424,6 +494,7 @@ export default function ShopClient() {
   const [filterDecade, setFilterDecade] = useState(0)
   const [filterSearch, setFilterSearch] = useState('')
   const [timeMode, setTimeMode] = useState<'decade' | 'year'>('decade')
+  const [sortBy, setSortBy] = useState<'popular' | 'rare' | 'listeners' | 'price_asc' | 'price_desc' | 'az'>('popular')
 
   // Detail + Cart
   const [detailItem, setDetailItem] = useState<ShopItem | null>(null)
@@ -437,7 +508,7 @@ export default function ShopClient() {
   const hasFilters = !!(filterFormat || filterGenre || filterDecade || filterSearch)
 
   // ── Fetch helper (never touches `loading` — that's only for initial mount) ─
-  const fetchData = useCallback(async (p: number, fmt: string, genre: string, decade: number, search: string) => {
+  const fetchData = useCallback(async (p: number, fmt: string, genre: string, decade: number, search: string, sort = 'popular') => {
     setRefreshing(true)
     if (p === 1) setSummaryLoading(true)
 
@@ -445,7 +516,7 @@ export default function ShopClient() {
     const itemParams = {
       p_search: search || null, p_format: fmt || null, p_condition: null,
       p_genre: genre || null, p_decade: decade || null, p_item_type: null,
-      p_performance: null, p_sort: 'popular', p_page: p, p_page_size: PAGE_SIZE,
+      p_performance: null, p_sort: sort, p_page: p, p_page_size: PAGE_SIZE,
     }
 
     const [sumRes, itemRes] = await Promise.all([
@@ -481,9 +552,9 @@ export default function ShopClient() {
       return () => clearTimeout(searchTimer.current)
     }
     setPage(1)
-    fetchData(1, filterFormat, filterGenre, filterDecade, filterSearch)
+    fetchData(1, filterFormat, filterGenre, filterDecade, filterSearch, sortBy)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterFormat, filterGenre, filterDecade, filterSearch])
+  }, [filterFormat, filterGenre, filterDecade, filterSearch, sortBy])
 
   // ── Pagination (items only, no summary re-fetch) ────────────────────────────
   useEffect(() => {
@@ -492,7 +563,7 @@ export default function ShopClient() {
       supabase.rpc('get_shop_items', {
         p_search: filterSearch || null, p_format: filterFormat || null,
         p_condition: null, p_genre: filterGenre || null, p_decade: filterDecade || null,
-        p_item_type: null, p_performance: null, p_sort: 'popular', p_page: page, p_page_size: PAGE_SIZE,
+        p_item_type: null, p_performance: null, p_sort: sortBy, p_page: page, p_page_size: PAGE_SIZE,
       }).then(({ data }) => {
         setRefreshing(false)
         if (data && (data as ShopItem[]).length > 0) {
@@ -571,6 +642,20 @@ export default function ShopClient() {
             <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: MUTED, fontSize: 14, pointerEvents: 'none' }}>&#x2315;</span>
             {filterSearch && <button onClick={() => setFilterSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>x</button>}
           </div>
+
+          {/* Sort selector */}
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value as typeof sortBy)}
+            style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '7px 10px', color: TEXT, fontSize: 12, cursor: 'pointer', flexShrink: 0 }}
+          >
+            <option value="popular">Most Sold</option>
+            <option value="rare">Rarest First</option>
+            <option value="listeners">Most Listeners</option>
+            <option value="price_asc">Price: Low–High</option>
+            <option value="price_desc">Price: High–Low</option>
+            <option value="az">A–Z</option>
+          </select>
 
           <div style={{ flex: 1 }} />
 
