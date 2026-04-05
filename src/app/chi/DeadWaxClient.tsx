@@ -109,6 +109,7 @@ interface InventoryFlatFact {
   genres: string | null
   release_year: number | null
   created_at: string | null
+  rarity_label: string | null
 }
 
 interface SalesByDate {
@@ -294,7 +295,7 @@ interface HoverState {
   metricLabel: string   // "Times Sold" | "Sales"
   metricValue: string   // formatted display value
   isRevenue: boolean
-  dimType: 'format' | 'condition' | 'genre' | 'year' | 'decade'
+  dimType: 'format' | 'condition' | 'genre' | 'year' | 'decade' | 'popularity'
   dimValue: string | number
   mouseX: number
   mouseY: number
@@ -355,6 +356,7 @@ interface FlatFact {
   genres: string | null
   release_year: number | null
   revenue_cents: number
+  popularity_tier: string
 }
 
 type ActiveFilters = {
@@ -365,18 +367,20 @@ type ActiveFilters = {
   date: string | null
   dateFrom: string | null   // date range start (from dropdown)
   decade: number | null     // e.g. 1980 → 1980–1989
+  popularity: string | null
 }
 type ExcludeKey = keyof ActiveFilters | null
 
 function applyFilters(facts: FlatFact[], filters: ActiveFilters, exclude: ExcludeKey = null) {
   return facts.filter(f => {
-    if (exclude !== 'format'    && filters.format    && f.format !== filters.format) return false
-    if (exclude !== 'condition' && filters.condition && f.condition !== filters.condition) return false
-    if (exclude !== 'year'      && filters.year      && f.release_year !== filters.year) return false
+    if (exclude !== 'format'     && filters.format     && f.format !== filters.format) return false
+    if (exclude !== 'condition'  && filters.condition  && f.condition !== filters.condition) return false
+    if (exclude !== 'popularity' && filters.popularity && f.popularity_tier !== filters.popularity) return false
+    if (exclude !== 'year'       && filters.year       && f.release_year !== filters.year) return false
     // date: single-day click and range-start both use 'date' exclude key
-    if (exclude !== 'date'      && filters.date      && f.sale_date !== filters.date) return false
-    if (exclude !== 'date'      && filters.dateFrom  && f.sale_date < filters.dateFrom) return false
-    if (exclude !== 'decade'    && filters.decade != null) {
+    if (exclude !== 'date'       && filters.date       && f.sale_date !== filters.date) return false
+    if (exclude !== 'date'       && filters.dateFrom   && f.sale_date < filters.dateFrom) return false
+    if (exclude !== 'decade'     && filters.decade != null) {
       if (!f.release_year || f.release_year < filters.decade || f.release_year > filters.decade + 9) return false
     }
     if (exclude !== 'genre' && filters.genre) {
@@ -445,6 +449,23 @@ function aggByDecade(facts: FlatFact[]): { decade: number; label: string; times_
   })
   return Object.entries(m).sort((a, b) => Number(a[0]) - Number(b[0]))
     .map(([dec, v]) => ({ decade: Number(dec), label: `${dec}s`, ...v }))
+}
+
+// Popularity tier order for display
+const POP_ORDER = ['Iconic (1M+)', 'Popular (100K+)', 'Known (10K+)', 'Niche (<10K)', 'Unranked']
+
+function aggByPopularity(facts: FlatFact[]): { label: string; times_sold: number; revenue_cents: number }[] {
+  const m: Record<string, { times_sold: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    const tier = f.popularity_tier || 'Unranked'
+    if (!m[tier]) m[tier] = { times_sold: 0, revenue_cents: 0 }
+    m[tier].times_sold++
+    m[tier].revenue_cents += f.revenue_cents
+  })
+  return Object.entries(m)
+    .filter(([label]) => label !== 'Unranked')   // hide Unranked — it dominates and adds no signal
+    .sort((a, b) => POP_ORDER.indexOf(a[0]) - POP_ORDER.indexOf(b[0]))
+    .map(([label, v]) => ({ label, ...v }))
 }
 
 function aggByYear(facts: FlatFact[]): InventoryByYear[] {
@@ -532,7 +553,8 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
   const [filterYear, setFilterYear]           = useState<number | null>(null)
   const [filterDecade, setFilterDecade]       = useState<number | null>(null)
   const [filterDate, setFilterDate]           = useState<string | null>(null)
-  const [filterDateDays, setFilterDateDays]   = useState<number>(0) // 0 = all time
+  const [filterDateDays, setFilterDateDays]     = useState<number>(0) // 0 = all time
+  const [filterPopularity, setFilterPopularity] = useState<string | null>(null)
 
   // Derive date range start from preset
   const dateFrom = useMemo(() => {
@@ -541,10 +563,11 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
     return d.toISOString().split('T')[0]
   }, [filterDateDays])
 
-  const hasFilter = !!(filterFormat || filterCondition || filterGenre || filterYear || filterDecade || filterDate || filterDateDays)
+  const hasFilter = !!(filterFormat || filterCondition || filterGenre || filterYear || filterDecade || filterDate || filterDateDays || filterPopularity)
   const filters: ActiveFilters = {
     format: filterFormat, condition: filterCondition, genre: filterGenre,
-    year: filterYear, date: filterDate, dateFrom, decade: filterDecade
+    year: filterYear, date: filterDate, dateFrom, decade: filterDecade,
+    popularity: filterPopularity,
   }
 
   // Dropdown option lists derived from flat facts
@@ -566,6 +589,7 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
   const activeGenreData      = aggByGenre(applyFilters(flatFacts, filters, 'genre'))
   const activeYearData       = aggByYear(applyFilters(flatFacts, filters, 'year'))
   const activeDecadeData     = aggByDecade(applyFilters(flatFacts, filters, 'decade'))
+  const activePopData        = aggByPopularity(applyFilters(flatFacts, filters, 'popularity'))
 
   // Chart maxes
   const dateSlice    = activeDateData.slice(-30)
@@ -581,6 +605,8 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
   const maxYearRev    = Math.max(...activeYearData.map(y => y.revenue_cents), 1)
   const maxDecadeSold = Math.max(...activeDecadeData.map(d => d.times_sold), 1)
   const maxDecadeRev  = Math.max(...activeDecadeData.map(d => d.revenue_cents), 1)
+  const maxPopSold    = Math.max(...activePopData.map(d => d.times_sold), 1)
+  const maxPopRev     = Math.max(...activePopData.map(d => d.revenue_cents), 1)
 
   // Filtered KPI totals — derived from flat facts when any filter is active
   const filteredFacts   = hasFilter ? applyFilters(flatFacts, filters) : null
@@ -599,7 +625,7 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
 
   function clearAll() {
     setFilterFormat(null); setFilterCondition(null); setFilterGenre(null)
-    setFilterYear(null); setFilterDecade(null); setFilterDate(null); setFilterDateDays(0)
+    setFilterYear(null); setFilterDecade(null); setFilterDate(null); setFilterDateDays(0); setFilterPopularity(null)
   }
 
   // ── Viz-in-tooltip state ──────────────────────────────────────────────────
@@ -642,30 +668,6 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
 
   return (
     <div className="flex flex-col gap-4">
-
-      {/* ── Square sub-tab nav ───────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1 border-b pb-3" style={{ borderColor: '#1e1e1e' }}>
-        <button
-          className="px-4 py-1.5 text-sm font-semibold rounded-lg transition-all"
-          style={{ background: '#ff6b35', color: '#fff' }}
-        >
-          📊 Sales
-        </button>
-        <button
-          className="px-4 py-1.5 text-sm rounded-lg transition-all cursor-not-allowed"
-          style={{ color: '#444', border: '1px solid #222' }}
-          title="Coming soon"
-        >
-          📦 Inventory
-        </button>
-        <button
-          className="px-4 py-1.5 text-sm rounded-lg transition-all cursor-not-allowed"
-          style={{ color: '#444', border: '1px solid #222' }}
-          title="Coming soon"
-        >
-          👥 Customers
-        </button>
-      </div>
 
       {/* ── Filter dropdowns row ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 py-1">
@@ -933,6 +935,32 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
         )}
       </ChartCard>
 
+      {/* ── Sales by Popularity ──────────────────────────────────────────── */}
+      <ChartCard title="Sales by Popularity" subtitle="Last.fm listener tier · click to filter · Times Sold + Revenue">
+        {activePopData.length > 0 ? (
+          <>
+            <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+              <span style={{ width: 120 }} />
+              <span className="flex-1 text-center">Times Sold</span>
+              <span className="flex-1 text-center">Revenue</span>
+            </div>
+            {activePopData.map(d => (
+              <DualBarRow key={d.label} label={d.label}
+                val1={d.times_sold} max1={maxPopSold} val2={d.revenue_cents} max2={maxPopRev}
+                fmt1={v => v.toLocaleString()} fmt2={v => fmtDollars(v)}
+                color1={ORANGE} color2={PINK}
+                selected={filterPopularity === d.label}
+                onClick={() => setFilterPopularity(p => p === d.label ? null : d.label)}
+                {...makeHoverHandlers(d.label, d.times_sold, d.revenue_cents, 'popularity', d.label)} />
+            ))}
+          </>
+        ) : (
+          <div className="text-xs text-center py-6" style={{ color: '#444' }}>
+            Popularity data still enriching — appears as Last.fm data fills in
+          </div>
+        )}
+      </ChartCard>
+
       {/* ── Viz-in-tooltip (portal to body coords) ──────────────────────── */}
       {hoverState && <VizTooltip state={hoverState} dayData={tooltipDayData} />}
 
@@ -1037,6 +1065,23 @@ function invAggByYear(facts: InventoryFlatFact[]): (InvByDim & { year: number })
     .map(([yr, v]) => ({ year: Number(yr), label: yr, ...v }))
 }
 
+const RARITY_ORDER = ['Ultra Rare', 'Rare', 'Uncommon', 'Common']
+
+function invAggByRarity(facts: InventoryFlatFact[]): InvByDim[] {
+  const m: Record<string, { item_count: number; times_sold: number; revenue_cents: number }> = {}
+  facts.forEach(f => {
+    const r = f.rarity_label ?? 'Unscored'
+    if (r === 'Unscored') return   // skip unscored items to keep chart clean
+    if (!m[r]) m[r] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
+    m[r].item_count++
+    m[r].times_sold    += f.times_sold
+    m[r].revenue_cents += f.revenue_cents
+  })
+  return Object.entries(m)
+    .sort((a, b) => (RARITY_ORDER.indexOf(a[0]) ?? 99) - (RARITY_ORDER.indexOf(b[0]) ?? 99))
+    .map(([label, v]) => ({ label, ...v }))
+}
+
 // Catalog growth: items added per month from created_at
 function invGrowthByMonth(facts: InventoryFlatFact[]): { month: string; count: number }[] {
   const m: Record<string, number> = {}
@@ -1086,7 +1131,8 @@ function InventoryPanel({ kpis, flatFacts }: {
   const genreData  = invAggByGenre(applyInvFilters(flatFacts, invF, 'genre'))
   const decadeData = invAggByDecade(applyInvFilters(flatFacts, invF, 'decade'))
   const yearData   = invAggByYear(applyInvFilters(flatFacts, invF, 'release_year'))
-  const growthData = useMemo(() => invGrowthByMonth(flatFacts), [flatFacts])
+  const growthData  = useMemo(() => invGrowthByMonth(flatFacts), [flatFacts])
+  const rarityData  = invAggByRarity(applyInvFilters(flatFacts, invF))
 
   // Chart maxes
   const maxFmt     = Math.max(...fmtData.map(d => d.item_count), 1)
@@ -1102,6 +1148,8 @@ function InventoryPanel({ kpis, flatFacts }: {
   const maxDecadeS = Math.max(...decadeData.map(d => d.times_sold), 1)
   const maxYear    = Math.max(...yearData.map(d => d.item_count), 1)
   const maxGrowth  = Math.max(...growthData.map(d => d.count), 1)
+  const maxRarity  = Math.max(...rarityData.map(d => d.item_count), 1)
+  const maxRarityS = Math.max(...rarityData.map(d => d.times_sold), 1)
 
   // Filtered KPI totals
   const filteredFacts = hasFilter ? applyInvFilters(flatFacts, invF) : null
@@ -1368,6 +1416,25 @@ function InventoryPanel({ kpis, flatFacts }: {
           )}
         </ChartCard>
       </div>
+
+      {/* ── Inventory by Rarity ──────────────────────────────────────── */}
+      {rarityData.length > 0 && (
+        <ChartCard title="Inventory by Rarity" subtitle="Discogs-scored items · In Catalog + Times Sold">
+          <>
+            <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
+              <span style={{ width: 120 }} />
+              <span className="flex-1 text-center">In Catalog</span>
+              <span className="flex-1 text-center">Times Sold</span>
+            </div>
+            {rarityData.map(d => (
+              <DualBarRow key={d.label} label={d.label}
+                val1={d.item_count} max1={maxRarity} val2={d.times_sold} max2={maxRarityS}
+                color1={BLUE} color2={ORANGE}
+                fmt1={v => v.toLocaleString()} fmt2={v => v.toLocaleString()} />
+            ))}
+          </>
+        </ChartCard>
+      )}
 
       {/* ── Row 5: Catalog by Release Year ───────────────────────────── */}
       {yearData.length > 0 && (
@@ -2378,10 +2445,7 @@ export default function DeadWaxClient({
             />
           )}
           {activeTab === 'inventory' && (
-            <div>
-              <InventoryPanel kpis={inventoryKpis} flatFacts={inventoryFlatFacts} />
-              <RaritySection rarityDistribution={rarityDistribution} topRareItems={topRareItems} />
-            </div>
+            <InventoryPanel kpis={inventoryKpis} flatFacts={inventoryFlatFacts} />
           )}
           {activeTab === 'catalog' && (
             <div>
