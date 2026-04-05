@@ -47,7 +47,10 @@ export default async function ChiPage() {
     { data: squareInventoryByYear },
     { data: squareFlatFacts },
     { data: inventoryKpis },
-    { data: inventoryFlatFacts },
+    { data: inventoryGroupedFacts },
+    { data: inventoryGrowthByMonth },
+    { data: inventoryGenreBreakdown },
+    { data: inventoryItemsByYear },
   ] = await Promise.all([
     supabase.rpc('get_square_summary'),
 
@@ -94,7 +97,10 @@ export default async function ChiPage() {
     supabase.rpc('get_square_inventory_by_year'),
     supabase.rpc('get_square_flat_facts').limit(10000),
     supabase.rpc('get_inventory_kpis'),
-    supabase.rpc('get_inventory_flat_facts').limit(25000),
+    supabase.rpc('get_inventory_grouped_facts'),
+    supabase.rpc('get_inventory_growth_by_month'),
+    supabase.rpc('get_inventory_genre_breakdown'),
+    supabase.rpc('get_inventory_items_by_year'),
   ])
 
   return (
@@ -124,7 +130,10 @@ export default async function ChiPage() {
       squareInventoryByYear={squareInventoryByYear ?? []}
       squareFlatFacts={squareFlatFacts ?? []}
       inventoryKpis={inventoryKpis?.[0] ?? null}
-      inventoryFlatFacts={inventoryFlatFacts ?? []}
+      inventoryGroupedFacts={inventoryGroupedFacts ?? []}
+      inventoryGrowthByMonth={inventoryGrowthByMonth ?? []}
+      inventoryGenreBreakdown={inventoryGenreBreakdown ?? []}
+      inventoryItemsByYear={inventoryItemsByYear ?? []}
       userEmail={user.email ?? ''}
     />
   )

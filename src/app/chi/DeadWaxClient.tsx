@@ -99,17 +99,28 @@ interface InventoryKpis {
   enriched_items: number
 }
 
-interface InventoryFlatFact {
+interface InventoryGroupedFact {
   format: string
   condition: string
   item_type: string        // 'Named Release' | 'Generic Stock'
   performance_tier: string // 'Hot' | 'Selling' | 'Zero Sales'
+  rarity_label: string     // 'Ultra Rare' | 'Rare' | 'Uncommon' | 'Common' | 'Unscored'
+  decade: number | null    // e.g. 1980 → 1980–1989
+  item_count: number
   times_sold: number
   revenue_cents: number
-  genres: string | null
-  release_year: number | null
-  created_at: string | null
-  rarity_label: string | null
+}
+
+interface InventoryGenreRow {
+  genre: string
+  item_count: number
+  times_sold: number
+  revenue_cents: number
+}
+
+interface InventoryGrowthRow {
+  month: string   // 'YYYY-MM'
+  item_count: number
 }
 
 interface SalesByDate {
@@ -139,6 +150,7 @@ interface CatalogByGenre {
 
 interface InventoryByYear {
   release_year: number
+  item_count?: number
   times_sold: number
   revenue_cents: number
 }
@@ -203,7 +215,10 @@ interface Props {
   squareInventoryByYear: InventoryByYear[]
   squareFlatFacts: FlatFact[]
   inventoryKpis: InventoryKpis | null
-  inventoryFlatFacts: InventoryFlatFact[]
+  inventoryGroupedFacts: InventoryGroupedFact[]
+  inventoryGrowthByMonth: InventoryGrowthRow[]
+  inventoryGenreBreakdown: InventoryGenreRow[]
+  inventoryItemsByYear: InventoryByYear[]
   userEmail: string
 }
 
@@ -972,45 +987,36 @@ function SquarePanel({ kpis, salesByDate, salesByFormat, salesByCondition, catal
 
 const BLUE = '#4dabf7'
 
-// Inventory filter type (mirrors sales ActiveFilters but for catalog dimensions)
+// Inventory filter type — works with pre-aggregated grouped facts
 type InvFilters = {
   format: string | null
   condition: string | null
   item_type: string | null
   tier: string | null
-  genre: string | null
   decade: number | null
-  release_year: number | null
 }
 type InvExclude = keyof InvFilters | null
 
-function applyInvFilters(facts: InventoryFlatFact[], f: InvFilters, exclude: InvExclude = null): InventoryFlatFact[] {
+function applyInvFilters(facts: InventoryGroupedFact[], f: InvFilters, exclude: InvExclude = null): InventoryGroupedFact[] {
   return facts.filter(row => {
-    if (exclude !== 'format'    && f.format    && row.format    !== f.format)    return false
-    if (exclude !== 'condition' && f.condition && row.condition !== f.condition) return false
-    if (exclude !== 'item_type' && f.item_type && row.item_type !== f.item_type) return false
-    if (exclude !== 'tier'      && f.tier      && row.performance_tier !== f.tier) return false
-    if (exclude !== 'release_year' && f.release_year != null && row.release_year !== f.release_year) return false
-    if (exclude !== 'decade'    && f.decade != null) {
-      if (row.release_year == null || row.release_year < f.decade || row.release_year > f.decade + 9) return false
-    }
-    if (exclude !== 'genre' && f.genre) {
-      const gl = (row.genres ?? '').split(',').map(g => g.trim())
-      if (!gl.includes(f.genre!)) return false
-    }
+    if (exclude !== 'format'    && f.format    && row.format            !== f.format)    return false
+    if (exclude !== 'condition' && f.condition && row.condition         !== f.condition) return false
+    if (exclude !== 'item_type' && f.item_type && row.item_type         !== f.item_type) return false
+    if (exclude !== 'tier'      && f.tier      && row.performance_tier  !== f.tier)      return false
+    if (exclude !== 'decade'    && f.decade != null && row.decade       !== f.decade)    return false
     return true
   })
 }
 
-// Aggregation helpers for inventory
+// Aggregation helpers for inventory — SUM(item_count) because each row represents many items
 type InvByDim = { label: string; item_count: number; times_sold: number; revenue_cents: number }
 
-function invAggBy(facts: InventoryFlatFact[], key: keyof InventoryFlatFact): InvByDim[] {
+function invAggBy(facts: InventoryGroupedFact[], key: keyof InventoryGroupedFact): InvByDim[] {
   const m: Record<string, { item_count: number; times_sold: number; revenue_cents: number }> = {}
   facts.forEach(f => {
     const v = String(f[key] ?? 'Unknown')
     if (!m[v]) m[v] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
-    m[v].item_count++
+    m[v].item_count   += f.item_count
     m[v].times_sold   += f.times_sold
     m[v].revenue_cents += f.revenue_cents
   })
@@ -1019,62 +1025,30 @@ function invAggBy(facts: InventoryFlatFact[], key: keyof InventoryFlatFact): Inv
     .map(([label, v]) => ({ label, ...v }))
 }
 
-function invAggByGenre(facts: InventoryFlatFact[]): InvByDim[] {
-  const m: Record<string, { item_count: number; times_sold: number; revenue_cents: number }> = {}
-  facts.forEach(f => {
-    const genres = (f.genres ?? '').split(',').map(g => g.trim()).filter(Boolean)
-    genres.forEach(g => {
-      if (!m[g]) m[g] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
-      m[g].item_count++
-      m[g].times_sold    += f.times_sold
-      m[g].revenue_cents += f.revenue_cents
-    })
-  })
-  return Object.entries(m)
-    .sort((a, b) => b[1].item_count - a[1].item_count)
-    .slice(0, 20)
-    .map(([label, v]) => ({ label, ...v }))
-}
-
-function invAggByDecade(facts: InventoryFlatFact[]): InvByDim[] {
+function invAggByDecade(facts: InventoryGroupedFact[]): InvByDim[] {
   const m: Record<number, { item_count: number; times_sold: number; revenue_cents: number }> = {}
   facts.forEach(f => {
-    if (!f.release_year) return
-    const dec = Math.floor(f.release_year / 10) * 10
-    if (!m[dec]) m[dec] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
-    m[dec].item_count++
-    m[dec].times_sold    += f.times_sold
-    m[dec].revenue_cents += f.revenue_cents
+    if (f.decade == null) return
+    if (!m[f.decade]) m[f.decade] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
+    m[f.decade].item_count   += f.item_count
+    m[f.decade].times_sold   += f.times_sold
+    m[f.decade].revenue_cents += f.revenue_cents
   })
   return Object.entries(m)
     .sort((a, b) => Number(a[0]) - Number(b[0]))
-    .map(([dec, v]) => ({ label: `${dec}s`, item_count: v.item_count, times_sold: v.times_sold, revenue_cents: v.revenue_cents }))
-}
-
-function invAggByYear(facts: InventoryFlatFact[]): (InvByDim & { year: number })[] {
-  const m: Record<number, { item_count: number; times_sold: number; revenue_cents: number }> = {}
-  facts.forEach(f => {
-    if (!f.release_year) return
-    if (!m[f.release_year]) m[f.release_year] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
-    m[f.release_year].item_count++
-    m[f.release_year].times_sold    += f.times_sold
-    m[f.release_year].revenue_cents += f.revenue_cents
-  })
-  return Object.entries(m)
-    .sort((a, b) => Number(a[0]) - Number(b[0]))
-    .map(([yr, v]) => ({ year: Number(yr), label: yr, ...v }))
+    .map(([dec, v]) => ({ label: `${dec}s`, ...v }))
 }
 
 const RARITY_ORDER = ['Ultra Rare', 'Rare', 'Uncommon', 'Common']
 
-function invAggByRarity(facts: InventoryFlatFact[]): InvByDim[] {
+function invAggByRarity(facts: InventoryGroupedFact[]): InvByDim[] {
   const m: Record<string, { item_count: number; times_sold: number; revenue_cents: number }> = {}
   facts.forEach(f => {
     const r = f.rarity_label ?? 'Unscored'
-    if (r === 'Unscored') return   // skip unscored items to keep chart clean
+    if (r === 'Unscored') return
     if (!m[r]) m[r] = { item_count: 0, times_sold: 0, revenue_cents: 0 }
-    m[r].item_count++
-    m[r].times_sold    += f.times_sold
+    m[r].item_count   += f.item_count
+    m[r].times_sold   += f.times_sold
     m[r].revenue_cents += f.revenue_cents
   })
   return Object.entries(m)
@@ -1082,57 +1056,50 @@ function invAggByRarity(facts: InventoryFlatFact[]): InvByDim[] {
     .map(([label, v]) => ({ label, ...v }))
 }
 
-// Catalog growth: items added per month from created_at
-function invGrowthByMonth(facts: InventoryFlatFact[]): { month: string; count: number }[] {
-  const m: Record<string, number> = {}
-  facts.forEach(f => {
-    if (!f.created_at) return
-    const mo = f.created_at.slice(0, 7) // 'YYYY-MM'
-    m[mo] = (m[mo] ?? 0) + 1
-  })
-  return Object.entries(m)
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([month, count]) => ({ month, count }))
-}
-
-function InventoryPanel({ kpis, flatFacts }: {
+function InventoryPanel({ kpis, groupedFacts, growthByMonth, genreBreakdown, inventoryByYear }: {
   kpis: InventoryKpis | null
-  flatFacts: InventoryFlatFact[]
+  groupedFacts: InventoryGroupedFact[]
+  growthByMonth: InventoryGrowthRow[]
+  genreBreakdown: InventoryGenreRow[]
+  inventoryByYear: InventoryByYear[]
 }) {
   const [filterFormat,  setFilterFormat]  = useState<string | null>(null)
   const [filterCond,    setFilterCond]    = useState<string | null>(null)
   const [filterType,    setFilterType]    = useState<string | null>(null)
   const [filterTier,    setFilterTier]    = useState<string | null>(null)
-  const [filterGenre,   setFilterGenre]   = useState<string | null>(null)
   const [filterDecade,  setFilterDecade]  = useState<number | null>(null)
-  const [filterYear,    setFilterYear]    = useState<number | null>(null)
 
-  const hasFilter = !!(filterFormat || filterCond || filterType || filterTier || filterGenre || filterDecade != null || filterYear)
+  const hasFilter = !!(filterFormat || filterCond || filterType || filterTier || filterDecade != null)
   const invF: InvFilters = {
-    format: filterFormat, condition: filterCond, item_type: filterType, tier: filterTier,
-    genre: filterGenre, decade: filterDecade, release_year: filterYear
+    format: filterFormat, condition: filterCond, item_type: filterType,
+    tier: filterTier, decade: filterDecade,
   }
 
-  // Dropdown option lists
-  const allFormats    = useMemo(() => [...new Set(flatFacts.map(f => f.format))].sort(), [flatFacts])
-  const allConditions = useMemo(() => [...new Set(flatFacts.map(f => f.condition))].sort(), [flatFacts])
+  // Dropdown option lists derived from grouped facts
+  const allFormats    = useMemo(() => [...new Set(groupedFacts.map(f => f.format))].sort(), [groupedFacts])
+  const allConditions = useMemo(() => [...new Set(groupedFacts.map(f => f.condition))].sort(), [groupedFacts])
   const allTiers      = useMemo(() => ['Hot', 'Selling', 'Zero Sales'], [])
-  const allGenres     = useMemo(() => {
-    const s = new Set<string>()
-    flatFacts.forEach(f => { if (f.genres) f.genres.split(',').map(g => g.trim()).filter(Boolean).forEach(g => s.add(g)) })
-    return [...s].sort()
-  }, [flatFacts])
 
-  // Chart data (always from flat facts, each chart excludes its own dimension)
-  const fmtData    = invAggBy(applyInvFilters(flatFacts, invF, 'format'),    'format')
-  const condData   = invAggBy(applyInvFilters(flatFacts, invF, 'condition'), 'condition')
-  const typeData   = invAggBy(applyInvFilters(flatFacts, invF, 'item_type'), 'item_type')
-  const tierData   = invAggBy(applyInvFilters(flatFacts, invF, 'tier'),      'performance_tier')
-  const genreData  = invAggByGenre(applyInvFilters(flatFacts, invF, 'genre'))
-  const decadeData = invAggByDecade(applyInvFilters(flatFacts, invF, 'decade'))
-  const yearData   = invAggByYear(applyInvFilters(flatFacts, invF, 'release_year'))
-  const growthData  = useMemo(() => invGrowthByMonth(flatFacts), [flatFacts])
-  const rarityData  = invAggByRarity(applyInvFilters(flatFacts, invF))
+  // Chart data — each chart excludes its own dimension for cross-filter
+  const fmtData    = invAggBy(applyInvFilters(groupedFacts, invF, 'format'),    'format')
+  const condData   = invAggBy(applyInvFilters(groupedFacts, invF, 'condition'), 'condition')
+  const typeData   = invAggBy(applyInvFilters(groupedFacts, invF, 'item_type'), 'item_type')
+  const tierData   = invAggBy(applyInvFilters(groupedFacts, invF, 'tier'),      'performance_tier')
+  const decadeData = invAggByDecade(applyInvFilters(groupedFacts, invF, 'decade'))
+  const rarityData = invAggByRarity(applyInvFilters(groupedFacts, invF))
+
+  // Genre + year + growth use pre-aggregated server data (no client cross-filter)
+  const genreData  = useMemo(() => genreBreakdown.slice(0, 20).map(g => ({
+    label: g.genre, item_count: g.item_count, times_sold: g.times_sold, revenue_cents: g.revenue_cents
+  })), [genreBreakdown])
+  const yearData   = useMemo(() => inventoryByYear.map(y => ({
+    year: y.release_year, label: String(y.release_year),
+    item_count: y.item_count ?? 0,
+    times_sold: y.times_sold, revenue_cents: y.revenue_cents
+  })), [inventoryByYear])
+  const growthData = useMemo(() => growthByMonth.map(g => ({
+    month: g.month, count: Number(g.item_count)
+  })), [growthByMonth])
 
   // Chart maxes
   const maxFmt     = Math.max(...fmtData.map(d => d.item_count), 1)
@@ -1151,16 +1118,18 @@ function InventoryPanel({ kpis, flatFacts }: {
   const maxRarity  = Math.max(...rarityData.map(d => d.item_count), 1)
   const maxRarityS = Math.max(...rarityData.map(d => d.times_sold), 1)
 
-  // Filtered KPI totals
-  const filteredFacts = hasFilter ? applyInvFilters(flatFacts, invF) : null
-  const filteredCount = filteredFacts?.length ?? null
+  // Filtered KPI totals (sum item_count from grouped rows)
+  const filteredFacts = hasFilter ? applyInvFilters(groupedFacts, invF) : null
+  const filteredCount = filteredFacts ? filteredFacts.reduce((s, r) => s + r.item_count, 0) : null
 
   // Live KPI values
   const kpiTotal    = filteredCount != null ? filteredCount.toLocaleString() : (kpis?.total_items?.toLocaleString() ?? '—')
-  const kpiNamed    = filteredCount != null ? filteredFacts!.filter(f => f.item_type === 'Named Release').length.toLocaleString()
-                                            : (kpis?.named_releases?.toLocaleString() ?? '—')
-  const kpiUnsold   = filteredCount != null ? filteredFacts!.filter(f => f.times_sold === 0).length.toLocaleString()
-                                            : (kpis?.zero_sales_items?.toLocaleString() ?? '—')
+  const kpiNamed    = filteredCount != null
+    ? filteredFacts!.filter(f => f.item_type === 'Named Release').reduce((s, r) => s + r.item_count, 0).toLocaleString()
+    : (kpis?.named_releases?.toLocaleString() ?? '—')
+  const kpiUnsold   = filteredCount != null
+    ? filteredFacts!.filter(f => f.times_sold === 0).reduce((s, r) => s + r.item_count, 0).toLocaleString()
+    : (kpis?.zero_sales_items?.toLocaleString() ?? '—')
   const kpiEnriched = kpis?.enriched_items?.toLocaleString() ?? '—'
 
   const invSelectStyle: React.CSSProperties = {
@@ -1169,8 +1138,8 @@ function InventoryPanel({ kpis, flatFacts }: {
   }
 
   function clearAll() {
-    setFilterFormat(null); setFilterCond(null); setFilterType(null); setFilterTier(null)
-    setFilterGenre(null); setFilterDecade(null); setFilterYear(null)
+    setFilterFormat(null); setFilterCond(null); setFilterType(null)
+    setFilterTier(null); setFilterDecade(null)
   }
 
   // Tier colors
@@ -1205,10 +1174,6 @@ function InventoryPanel({ kpis, flatFacts }: {
           <option value="">Performance: All</option>
           {allTiers.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
-        <select style={invSelectStyle} value={filterGenre ?? ''} onChange={e => setFilterGenre(e.target.value || null)}>
-          <option value="">Genre: All</option>
-          {allGenres.map(g => <option key={g} value={g}>{g}</option>)}
-        </select>
         {hasFilter && (
           <>
             <span className="text-xs px-3 py-1 rounded-lg" style={{ color: '#888', background: '#161616', border: '1px solid #222' }}>
@@ -1222,21 +1187,13 @@ function InventoryPanel({ kpis, flatFacts }: {
         )}
       </div>
 
-      {/* Year/decade chips from chart clicks */}
-      {(filterYear || filterDecade != null) && (
+      {/* Decade chip from chart click */}
+      {filterDecade != null && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          {filterYear && (
-            <button onClick={() => setFilterYear(null)} className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
-              style={{ background: '#0a1a2a', color: BLUE, border: `1px solid ${BLUE}44` }}>
-              Year: {filterYear} ✕
-            </button>
-          )}
-          {filterDecade != null && (
-            <button onClick={() => setFilterDecade(null)} className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
-              style={{ background: '#0a1a2a', color: BLUE, border: `1px solid ${BLUE}44` }}>
-              Decade: {filterDecade}s ✕
-            </button>
-          )}
+          <button onClick={() => setFilterDecade(null)} className="flex items-center gap-1 px-2 py-0.5 rounded hover:opacity-80"
+            style={{ background: '#0a1a2a', color: BLUE, border: `1px solid ${BLUE}44` }}>
+            Decade: {filterDecade}s ✕
+          </button>
         </div>
       )}
 
@@ -1369,7 +1326,7 @@ function InventoryPanel({ kpis, flatFacts }: {
 
       {/* ── Row 4: Genre + Decade ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ChartCard title="Catalog by Genre" subtitle="from enrichment data · click to filter">
+        <ChartCard title="Catalog by Genre" subtitle="from enrichment data">
           <div className="flex items-center gap-2 mb-1 px-2" style={{ fontSize: 10, color: '#555' }}>
             <span style={{ width: 120 }} />
             <span className="flex-1 text-center">In Catalog</span>
@@ -1380,8 +1337,8 @@ function InventoryPanel({ kpis, flatFacts }: {
               val1={d.item_count} max1={maxGenre} val2={d.times_sold} max2={maxGenreS}
               color1={BLUE} color2={ORANGE}
               fmt1={v => v.toLocaleString()} fmt2={v => v.toLocaleString()}
-              selected={filterGenre === d.label}
-              onClick={() => setFilterGenre(p => p === d.label ? null : d.label)} />
+              selected={false}
+              onClick={() => {}} />
           )) : (
             <div className="text-xs text-center py-8" style={{ color: '#444' }}>
               Enrichment still running — genre data will appear as albums are matched
@@ -1405,7 +1362,7 @@ function InventoryPanel({ kpis, flatFacts }: {
                     color1={BLUE} color2={ORANGE}
                     fmt1={v => v.toLocaleString()} fmt2={v => v.toLocaleString()}
                     selected={filterDecade === dec}
-                    onClick={() => { setFilterDecade(p => p === dec ? null : dec); setFilterYear(null) }} />
+                    onClick={() => { setFilterDecade(p => p === dec ? null : dec) }} />
                 )
               })}
             </>
@@ -1438,19 +1395,16 @@ function InventoryPanel({ kpis, flatFacts }: {
 
       {/* ── Row 5: Catalog by Release Year ───────────────────────────── */}
       {yearData.length > 0 && (
-        <ChartCard title="Catalog by Release Year" subtitle="click year bar to filter">
+        <ChartCard title="Catalog by Release Year" subtitle="items in catalog by release year">
           <div className="flex flex-col gap-2">
             <div>
               <div className="text-xs mb-1" style={{ color: '#555' }}>In Catalog</div>
-              <svg viewBox={`0 0 ${yearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none"
-                onMouseLeave={() => setFilterYear(null)}>
+              <svg viewBox={`0 0 ${yearData.length * 8} 40`} className="w-full" style={{ height: 50 }} preserveAspectRatio="none">
                 {yearData.map((y, i) => {
                   const barH = (y.item_count / maxYear) * 36
                   return (
                     <rect key={i} x={i * 8 + 1} y={38 - barH} width={6} height={barH}
-                      fill={BLUE} opacity={filterYear === y.year ? 1 : 0.65} rx={1}
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => setFilterYear(p => p === y.year ? null : y.year)}>
+                      fill={BLUE} opacity={0.65} rx={1}>
                       <title>{y.year}: {y.item_count} items</title>
                     </rect>
                   )
@@ -2366,7 +2320,7 @@ export default function DeadWaxClient({
   squareKpis, squareSalesByDate, squareSalesByFormat,
   squareSalesByCondition, squareCatalogByGenre, squareInventoryByYear,
   squareFlatFacts,
-  inventoryKpis, inventoryFlatFacts,
+  inventoryKpis, inventoryGroupedFacts, inventoryGrowthByMonth, inventoryGenreBreakdown, inventoryItemsByYear,
   userEmail,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('square')
@@ -2445,7 +2399,13 @@ export default function DeadWaxClient({
             />
           )}
           {activeTab === 'inventory' && (
-            <InventoryPanel kpis={inventoryKpis} flatFacts={inventoryFlatFacts} />
+            <InventoryPanel
+              kpis={inventoryKpis}
+              groupedFacts={inventoryGroupedFacts}
+              growthByMonth={inventoryGrowthByMonth}
+              genreBreakdown={inventoryGenreBreakdown}
+              inventoryByYear={inventoryItemsByYear}
+            />
           )}
           {activeTab === 'catalog' && (
             <div>
