@@ -11,6 +11,7 @@ import Image from 'next/image'
 import TableViewer from './TableViewer'
 import DatabaseMasterOverview, { type RawColumnProfile } from './DatabaseMasterOverview'
 import CatalogOverview, { type CatalogData } from './CatalogOverview'
+import ExtendedPlayPanel from './ExtendedPlayPanel'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -2309,7 +2310,7 @@ function RaritySection({ rarityDistribution, topRareItems }: {
   )
 }
 
-type Tab = 'square' | 'inventory' | 'instagram' | 'facebook' | 'tiktok' | 'catalog' | 'database' | 'db-overview' | 'enrichment'
+type Tab = 'square' | 'inventory' | 'instagram' | 'facebook' | 'tiktok' | 'catalog' | 'database' | 'db-overview' | 'enrichment' | 'extended-play'
 
 export default function DeadWaxClient({
   squareSummary, squareTopItems, recentPayments,
@@ -2381,7 +2382,8 @@ export default function DeadWaxClient({
             <TabButton active={activeTab === 'tiktok'}      onClick={() => setActiveTab('tiktok')}>🎵 TikTok</TabButton>
             <TabButton active={activeTab === 'database'}    onClick={() => setActiveTab('database')}>🗄️ Database</TabButton>
             <TabButton active={activeTab === 'db-overview'} onClick={() => setActiveTab('db-overview')}>🗺️ DB Overview</TabButton>
-            <TabButton active={activeTab === 'enrichment'}  onClick={() => setActiveTab('enrichment')}>✨ Enrichment</TabButton>
+            <TabButton active={activeTab === 'enrichment'}    onClick={() => setActiveTab('enrichment')}>✨ Enrichment</TabButton>
+            <TabButton active={activeTab === 'extended-play'} onClick={() => setActiveTab('extended-play')}>🎵 Extended Play</TabButton>
             <div style={{ width: 1, background: '#333', alignSelf: 'stretch', margin: '2px 4px' }} />
             <TabButton active={false} onClick={() => router.push('/shop')}>🛍️ Shop</TabButton>
             <TabButton active={false} onClick={() => router.push('/chi/mgmt')}>📊 Mgmt Dashboard</TabButton>
@@ -2446,6 +2448,9 @@ export default function DeadWaxClient({
               rarityDistribution={rarityDistribution}
               popularityLeaderboard={popularityLeaderboard}
             />
+          )}
+          {activeTab === 'extended-play' && (
+            <ExtendedPlayPanel />
           )}
         </section>
 
