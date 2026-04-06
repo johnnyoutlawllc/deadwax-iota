@@ -3,14 +3,13 @@
 // Dead Wax Records — Login page
 // Johnny Outlaw, LLC — Designed in Rockwall, TX
 //
-// Google OAuth only. Only johnnyoutlawllc@gmail.com is permitted.
-// See: Dead Wax Records/GOOGLE-AUTH.md
+// Google OAuth. Access controlled by public.app_user_allowlist in Supabase.
+// Add/remove users via the allowlist table — no code changes needed.
 
 import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSearchParams } from 'next/navigation'
 
-const ALLOWED_EMAIL = 'johnnyoutlawllc@gmail.com'
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.outlawapps.online'
 
 function GoogleIcon() {
@@ -43,7 +42,6 @@ function LoginForm() {
       provider: 'google',
       options: {
         redirectTo: `${SITE_URL}/api/auth/callback?next=/chi`,
-        queryParams: { login_hint: ALLOWED_EMAIL },
       },
     })
     if (error) {
