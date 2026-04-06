@@ -84,9 +84,6 @@ function LoginForm() {
         </div>
 
         <div className="mt-8 text-center space-y-2">
-          <a href="/" className="text-xs text-text-muted hover:text-accent transition-colors">
-            ← Back to Outlaw Apps
-          </a>
           <p className="text-xs text-text-muted opacity-50">
             App Last Updated On:{' '}
             {new Date(process.env.NEXT_PUBLIC_BUILD_TIME!).toLocaleString('en-US', {
