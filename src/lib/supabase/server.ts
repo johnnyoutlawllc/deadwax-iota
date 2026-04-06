@@ -14,6 +14,7 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      db: { schema: 'iota' },
       cookies: {
         getAll() { return cookieStore.getAll() },
         setAll(cs: { name: string; value: string; options: any }[]) {
