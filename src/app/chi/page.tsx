@@ -3,7 +3,7 @@
  * Johnny Outlaw, LLC — Designed in Rockwall, TX
  *
  * Route: /chi
- * Access: johnnyoutlawllc@gmail.com only (enforced via middleware.ts)
+ * Access: controlled by public.app_user_allowlist (requires 'chi' in apps[])
  */
 
 import { redirect } from 'next/navigation'
@@ -20,6 +20,19 @@ export default async function ChiPage() {
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/chi/login')
+
+  // ── Allowlist check ─────────────────────────────────────────────────────────
+  // Uses service-role client (bypasses RLS) to check app_user_allowlist.
+  const { data: allowRow } = await supabase
+    .from('app_user_allowlist')
+    .select('apps')
+    .eq('email', user.email ?? '')
+    .single()
+
+  if (!allowRow || !allowRow.apps.includes('chi')) {
+    redirect('/?access=denied')
+  }
+  // ────────────────────────────────────────────────────────────────────────────
 
   const [
     { data: squareSummary },
