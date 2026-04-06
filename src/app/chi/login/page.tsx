@@ -10,7 +10,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useSearchParams } from 'next/navigation'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.outlawapps.online'
+// Use the current origin at runtime so OAuth always returns to the right domain
 
 function GoogleIcon() {
   return (
@@ -41,7 +41,7 @@ function LoginForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${SITE_URL}/api/auth/callback?next=/chi`,
+        redirectTo: `${window.location.origin}/api/auth/callback?next=/chi`,
       },
     })
     if (error) {
