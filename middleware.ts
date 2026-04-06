@@ -1,12 +1,11 @@
 // Dead Wax Records — Auth middleware
 // Johnny Outlaw, LLC — Designed in Rockwall, TX
 //
-// Protects /chi and /shop routes. Only johnnyoutlawllc@gmail.com may access.
+// Protects /chi routes. Access controlled by public.app_user_allowlist.
+// Add/remove users via the allowlist table — no code changes needed.
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-
-const ALLOWED_EMAIL = 'johnnyoutlawllc@gmail.com'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -50,8 +49,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/chi/login', request.url))
   }
 
-  // Wrong email → send to login with error flag
-  if (user.email !== ALLOWED_EMAIL) {
+  // Check allowlist — user can read their own row via RLS policy
+  const { data: allowRow } = await supabase
+    .from('app_user_allowlist')
+    .select('apps')
+    .eq('email', user.email ?? '')
+    .single()
+
+  // Not in allowlist or doesn't have 'chi' access → send to login with error
+  if (!allowRow || !allowRow.apps.includes('chi')) {
     return NextResponse.redirect(new URL('/chi/login?error=unauthorized', request.url))
   }
 
