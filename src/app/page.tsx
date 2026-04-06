@@ -36,8 +36,16 @@ const apps = [
   {
     name: "Channel Health Index",
     url: "/chi",
-    tagline: "",
-    description: "",
+    tagline: "Dead Wax Records management dashboard.",
+    description: "Sales analytics, inventory insights, social media metrics, and enrichment data for Dead Wax Records.",
+    logo: null,
+    status: "live",
+  },
+  {
+    name: "Data Explorer",
+    url: "/explorer",
+    tagline: "Query your Supabase like a pro.",
+    description: "Admin-only SQL explorer with schema browser, table previews, and a syntax-highlighted SELECT editor across all Outlaw Apps data.",
     logo: null,
     status: "live",
   },
