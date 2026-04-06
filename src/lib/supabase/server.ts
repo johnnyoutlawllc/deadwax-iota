@@ -1,5 +1,5 @@
 // Dead Wax Records — Supabase server clients
-// Johnny Outlaw, LLC — Designed in Rockwall, TX
+// Johnny Outlaw, LLC — Designed in Greenville, TX
 //
 // Standard Outlaw pattern — see Dead Wax Records/GOOGLE-AUTH.md
 

@@ -2,7 +2,7 @@
 
 /**
  * Dead Wax Records — Database Master Overview
- * Johnny Outlaw, LLC — Designed in Rockwall, TX
+ * Johnny Outlaw, LLC — Designed in Greenville, TX
  *
  * All column profile tiles, grouped by platform, in one scrollable view.
  * Powered by pg_stats — no row fetching needed.

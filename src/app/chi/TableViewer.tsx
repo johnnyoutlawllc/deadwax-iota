@@ -2,7 +2,7 @@
 
 /**
  * Dead Wax Records — TableViewer
- * Johnny Outlaw, LLC — Designed in Rockwall, TX
+ * Johnny Outlaw, LLC — Designed in Greenville, TX
  *
  * Tableau Prep-style column profiling + sortable 100-row table.
  */

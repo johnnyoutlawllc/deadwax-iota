@@ -1,5 +1,5 @@
 // Dead Wax Records — Supabase auth callback handler
-// Johnny Outlaw, LLC — Designed in Rockwall, TX
+// Johnny Outlaw, LLC — Designed in Greenville, TX
 //
 // Standard Outlaw pattern: exchanges the OAuth/magic-link code for a session,
 // then redirects to `next` (defaults to /chi).

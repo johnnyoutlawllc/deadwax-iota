@@ -1,7 +1,7 @@
 'use client'
 /**
  * Data Explorer — Client Component
- * Johnny Outlaw, LLC — Designed in Rockwall, TX
+ * Johnny Outlaw, LLC — Designed in Greenville, TX
  *
  * Admin-only Supabase explorer:
  *  - Schema/table tree sidebar with hide/show per schema

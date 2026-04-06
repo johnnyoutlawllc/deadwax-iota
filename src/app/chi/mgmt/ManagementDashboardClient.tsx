@@ -2,7 +2,7 @@
 
 /**
  * Dead Wax Records — Strategy & Operations Dashboard (Client Component)
- * Johnny Outlaw, LLC — Designed in Rockwall, TX
+ * Johnny Outlaw, LLC — Designed in Greenville, TX
  *
  * Role-based dashboard: Alan (Owner), Brad (Operations), Sam (Social)
  */

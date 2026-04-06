@@ -1,7 +1,7 @@
 'use client'
 /**
  * Extended Play Analysis Panel
- * Johnny Outlaw, LLC — Designed in Rockwall, TX
+ * Johnny Outlaw, LLC — Designed in Greenville, TX
  *
  * Shows how long each post "keeps spinning" after publish.
  * Blue zone (days 1-2)  = New Reach  (initial audience burst)

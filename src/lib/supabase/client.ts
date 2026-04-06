@@ -1,5 +1,5 @@
 // Dead Wax Records — Supabase browser client
-// Johnny Outlaw, LLC — Designed in Rockwall, TX
+// Johnny Outlaw, LLC — Designed in Greenville, TX
 
 import { createBrowserClient } from '@supabase/ssr'
 

@@ -18,3 +18,16 @@ body {
   color: var(--color-text-primary);
   font-family: var(--font-sans);
 }
+
+/* Light mode overrides */
+.theme-light {
+  --color-background: #f9f9f9;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f0f0f0;
+  --color-border: #e0e0e0;
+  --color-accent: #ff6b35;
+  --color-accent-hover: #e85a26;
+  --color-text-primary: #111111;
+  --color-text-secondary: #444444;
+  --color-text-muted: #888888;
+}

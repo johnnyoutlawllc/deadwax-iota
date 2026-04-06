@@ -1,6 +1,6 @@
 /**
  * Data Explorer — SQL Query API
- * Johnny Outlaw, LLC — Designed in Rockwall, TX
+ * Johnny Outlaw, LLC — Designed in Greenville, TX
  *
  * SELECT-only SQL execution for the Data Explorer.
  * Two-layer safety: client UI + server-side validation.

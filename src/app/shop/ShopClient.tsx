@@ -1,5 +1,5 @@
 // Dead Wax Records — Shop Client (Catalog Explorer v2)
-// Johnny Outlaw, LLC — Designed in Rockwall, TX
+// Johnny Outlaw, LLC — Designed in Greenville, TX
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'

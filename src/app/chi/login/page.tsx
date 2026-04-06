@@ -1,7 +1,7 @@
 'use client'
 
 // Dead Wax Records — Login page
-// Johnny Outlaw, LLC — Designed in Rockwall, TX
+// Johnny Outlaw, LLC — Designed in Greenville, TX
 //
 // Google OAuth. Access controlled by public.app_user_allowlist in Supabase.
 // Add/remove users via the allowlist table — no code changes needed.

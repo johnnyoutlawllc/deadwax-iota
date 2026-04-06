@@ -1,5 +1,5 @@
 // Dead Wax Records — Supabase sign-out handler
-// Johnny Outlaw, LLC — Designed in Rockwall, TX
+// Johnny Outlaw, LLC — Designed in Greenville, TX
 //
 // Standard Outlaw pattern: server-side sign-out via POST.
 // See: Dead Wax Records/GOOGLE-AUTH.md

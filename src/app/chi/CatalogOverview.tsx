@@ -2,7 +2,7 @@
 
 /**
  * Dead Wax Records — Catalog Overview
- * Johnny Outlaw, LLC — Designed in Rockwall, TX
+ * Johnny Outlaw, LLC — Designed in Greenville, TX
  *
  * Auto-categorizes catalog items by format, condition, and sales performance.
  * Blends Square catalog with order line-item data.

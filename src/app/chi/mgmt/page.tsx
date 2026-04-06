@@ -1,6 +1,6 @@
 /**
  * Dead Wax Records — Strategy & Operations Dashboard
- * Johnny Outlaw, LLC — Designed in Rockwall, TX
+ * Johnny Outlaw, LLC — Designed in Greenville, TX
  *
  * Route: /chi/mgmt
  * Access: controlled by public.app_user_allowlist (requires 'chi' in apps[])

@@ -1,5 +1,5 @@
 // Dead Wax Records — Table Preview API
-// Johnny Outlaw, LLC — Designed in Rockwall, TX
+// Johnny Outlaw, LLC — Designed in Greenville, TX
 //
 // Returns up to 100 rows + column metadata for any allowed table.
 // Used by the Database tab TableViewer.

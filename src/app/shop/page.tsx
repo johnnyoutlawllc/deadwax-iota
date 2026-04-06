@@ -1,5 +1,5 @@
 // Dead Wax Records — Shop Page
-// Johnny Outlaw, LLC — Designed in Rockwall, TX
+// Johnny Outlaw, LLC — Designed in Greenville, TX
 
 import type { Metadata } from 'next'
 import ShopClient from './ShopClient'
