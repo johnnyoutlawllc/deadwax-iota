@@ -22,15 +22,13 @@ export default async function MgmtPage() {
   if (!user) redirect('/chi/login')
 
   // ── Allowlist check ─────────────────────────────────────────────────────────
-  // app_user_allowlist lives in the public schema; override the iota default
-  const { data: allowRow } = await supabase
-    .schema('public')
-    .from('app_user_allowlist')
-    .select('apps')
-    .eq('email', user.email ?? '')
-    .single()
+  // app_user_allowlist lives in public schema — use RPC (SECURITY DEFINER) to cross schemas
+  const { data: hasAccess } = await supabase.rpc('check_user_allowlist', {
+    p_email: user.email ?? '',
+    p_app: 'chi',
+  })
 
-  if (!allowRow || !allowRow.apps.includes('chi')) {
+  if (!hasAccess) {
     redirect('/chi/login?error=unauthorized')
   }
   // ────────────────────────────────────────────────────────────────────────────
