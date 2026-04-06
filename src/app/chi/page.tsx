@@ -23,14 +23,16 @@ export default async function ChiPage() {
 
   // ── Allowlist check ─────────────────────────────────────────────────────────
   // Uses service-role client (bypasses RLS) to check app_user_allowlist.
+  // app_user_allowlist lives in the public schema; override the iota default
   const { data: allowRow } = await supabase
+    .schema('public')
     .from('app_user_allowlist')
     .select('apps')
     .eq('email', user.email ?? '')
     .single()
 
   if (!allowRow || !allowRow.apps.includes('chi')) {
-    redirect('/?access=denied')
+    redirect('/chi/login?error=unauthorized')
   }
   // ────────────────────────────────────────────────────────────────────────────
 
