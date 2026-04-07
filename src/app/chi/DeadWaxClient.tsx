@@ -2355,7 +2355,7 @@ export default function DeadWaxClient({
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex flex-col items-end gap-0.5">
-            <span className="text-xs text-text-muted">Outlaw Apps — Designed in Greenville, TX</span>
+            <span className="text-xs text-text-muted">Dead Wax Records — Designed in Greenville, TX</span>
             {process.env.NEXT_PUBLIC_BUILD_TIME && (
               <span className="text-text-muted" style={{ fontSize: 10, opacity: 0.5 }}>
                 Updated{' '}

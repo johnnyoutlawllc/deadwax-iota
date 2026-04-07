@@ -1257,7 +1257,7 @@ export default function ManagementDashboardClient({
             {role === 'alan' ? '👔 Alan — Owner' : role === 'brad' ? '📦 Brad — Operations' : '📱 Sam — Social Media'}
           </span>
         )}
-        <span style={{ marginLeft: 'auto', color: MUTED, fontSize: 11 }}>Strategy & Operations · Outlaw Apps</span>
+        <span style={{ marginLeft: 'auto', color: MUTED, fontSize: 11 }}>Strategy & Operations · Dead Wax Records</span>
       </header>
 
       <main style={{ padding: '0 24px 48px' }}>
@@ -1267,7 +1267,7 @@ export default function ManagementDashboardClient({
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 60px)', padding: '40px 0' }}>
             <div style={{ textAlign: 'center', marginBottom: 40 }}>
               <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: '0.04em', color: '#f59e0b', marginBottom: 8 }}>DEAD WAX RECORDS</div>
-              <div style={{ color: MUTED, fontSize: 13 }}>Strategy &amp; Operations Dashboard · Powered by Outlaw Apps</div>
+              <div style={{ color: MUTED, fontSize: 13 }}>Strategy &amp; Operations Dashboard · Dead Wax Records</div>
             </div>
             <div style={{ color: SUB, marginBottom: 28, fontSize: 14 }}>Who are you? Select your dashboard.</div>
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 860 }}>

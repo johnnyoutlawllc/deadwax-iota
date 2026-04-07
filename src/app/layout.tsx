@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Outlaw Apps - We're Having Fun Here!",
+  title: "Dead Wax Records — Management Dashboard",
   description:
-    "The official hub for apps built by Johnny Outlaw, LLC. Shutterfield, SixGuess, What a Great Day, and more.",
-  keywords: ["Outlaw Apps", "Johnny Outlaw", "Shutterfield", "SixGuess", "What a Great Day"],
+    "Dead Wax Records management dashboard. Sales analytics, inventory insights, social media metrics, and enrichment data.",
+  keywords: ["Dead Wax Records", "vinyl records", "record store", "management dashboard"],
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },

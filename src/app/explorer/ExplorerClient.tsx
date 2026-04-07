@@ -484,7 +484,7 @@ export default function ExplorerClient({ userEmail }: ExplorerClientProps) {
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#fff" />
               </svg>
             </div>
-            <span style={{ color: '#555', fontSize: 13 }}>Outlaw Apps</span>
+            <span style={{ color: '#555', fontSize: 13 }}>Dead Wax Records</span>
           </a>
           <span style={{ color: '#222', fontSize: 14 }}>/</span>
           <span style={{ color: '#e0e0e0', fontSize: 14, fontWeight: 600 }}>Data Explorer</span>
